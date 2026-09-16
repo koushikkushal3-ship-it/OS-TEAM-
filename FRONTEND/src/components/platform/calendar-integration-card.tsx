@@ -1,7 +1,8 @@
 "use client";
 
 import { CalendarCheck2, CheckCircle2, ExternalLink, RefreshCw, Unplug } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Badge, Button, Card, CardHeader, ErrorNote, Spinner, Switch } from "@/components/ui/primitives";
 import { useCalendarIntegration, useCalendarIntegrationActions } from "@/features/platform/schedule";
 import { errorMessage } from "@/lib/api/client";
@@ -9,9 +10,14 @@ import { formatDateTime } from "@/lib/format";
 
 export function CalendarIntegrationCard() {
   const params = useSearchParams();
+  const router = useRouter();
+  // Read the result of the Google redirect once, then clean the address so a reload doesn't show it again.
+  const [callbackError] = useState(() => params.get("calendarError"));
+  useEffect(() => {
+    if (params.get("calendarError") || params.get("calendar")) router.replace("/master/integrations");
+  }, [params, router]);
   const { data, isLoading } = useCalendarIntegration();
   const { sync, sharing, disconnect } = useCalendarIntegrationActions();
-  const callbackError = params.get("calendarError");
   if (isLoading || !data) return <Spinner />;
   const result = sync.data ?? sharing.data;
   const mutationError = sync.error ?? sharing.error ?? disconnect.error;
@@ -28,7 +34,7 @@ export function CalendarIntegrationCard() {
         action={data.connected ? <Badge tone="ok">Connected</Badge> : <Badge tone="warn">Not connected</Badge>}
       />
       <div className="space-y-4 p-5">
-        {callbackError && <ErrorNote>{decodeURIComponent(callbackError)}</ErrorNote>}
+        {callbackError && !data.connected && <ErrorNote>{callbackError === "invalid_state" ? "The connection attempt expired. Click Connect Google Calendar again." : decodeURIComponent(callbackError)}</ErrorNote>}
         {mutationError && <ErrorNote>{errorMessage(mutationError)}</ErrorNote>}
         {!data.configured && <ErrorNote>Google OAuth is not configured on the server, so Calendar cannot be connected yet.</ErrorNote>}
 

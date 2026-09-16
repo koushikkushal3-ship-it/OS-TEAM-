@@ -1,8 +1,8 @@
 "use client";
 
 import { CheckCircle2, ExternalLink, HardDrive, Unplug } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { Badge, Button, Card, CardHeader, ErrorNote, PageHeader, Spinner } from "@/components/ui/primitives";
 import { useDisconnectDrive, useDriveStatus } from "@/features/operations/api";
 import { errorMessage } from "@/lib/api/client";
@@ -11,9 +11,13 @@ import { CalendarIntegrationCard } from "@/components/platform/calendar-integrat
 
 function DriveCard() {
   const params = useSearchParams();
+  const router = useRouter();
+  const [error] = useState(() => params.get("error"));
+  useEffect(() => {
+    if (params.get("error") || params.get("connected")) router.replace("/master/integrations");
+  }, [params, router]);
   const status = useDriveStatus();
   const disconnect = useDisconnectDrive();
-  const error = params.get("error");
 
   if (status.isLoading || !status.data) return <Spinner />;
   const drive = status.data;
@@ -31,7 +35,7 @@ function DriveCard() {
       />
 
       <div className="space-y-4 p-5">
-        {error && <ErrorNote>{decodeURIComponent(error)}</ErrorNote>}
+        {error && !drive.connected && <ErrorNote>{decodeURIComponent(error)}</ErrorNote>}
         {disconnect.error && <ErrorNote>{errorMessage(disconnect.error)}</ErrorNote>}
 
         {!drive.configured && (
