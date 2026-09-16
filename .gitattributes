@@ -1,0 +1,3 @@
+# Linux CI and hosting read these files; keep line endings consistent everywhere.
+* text=auto eol=lf
+*.png binary

@@ -1,0 +1,46 @@
+# Render blueprint for the TEAM OS backend (API). Render → New → Blueprint → pick this GitHub repo.
+# Every push to main redeploys automatically once GitHub checks pass. Database changes
+# (prisma migrations) are applied on start, before the API accepts requests.
+services:
+  - type: web
+    name: teamos-backend
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: BACKEND
+    # --include=dev: the build tools (Nest CLI, Prisma CLI) are dev dependencies.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npx prisma migrate deploy && node dist/main
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_SCHEMA
+        value: app
+      - key: AUTH_DEV_LOGIN
+        value: "false"
+      # Values below are secret or depend on your live address: Render asks for them on first setup.
+      # Copy DATABASE_URL, DIRECT_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and MFA_ENCRYPTION_KEY
+      # exactly from BACKEND/.env. MFA_ENCRYPTION_KEY must be identical, or the saved authenticator
+      # and Google connections cannot be read.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: MFA_ENCRYPTION_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_DRIVE_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_CALENDAR_REDIRECT_URI
+        sync: false

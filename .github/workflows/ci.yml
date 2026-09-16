@@ -1,0 +1,66 @@
+# Runs on every push to GitHub. Render only deploys the backend after these checks pass,
+# so a change that breaks tests never reaches the live portal.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend — types, lint, unit + end-to-end tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BACKEND
+    services:
+      # A throwaway database just for the tests. The live Supabase database is never touched here.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=app
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=app
+      DATABASE_SCHEMA: app
+      SEED_MASTER_ADMIN_EMAIL: master@teamos.test
+      SEED_GATEWAY_CODE: open-sesame-2026
+      AUTH_DEV_LOGIN: "true"
+      MFA_ENCRYPTION_KEY: test-key-0123456789abcdef0123456789abcdef
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: BACKEND/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm test
+      - run: npx prisma migrate deploy
+      - run: npx prisma db seed
+      - run: npm run test:e2e
+
+  frontend:
+    name: Frontend — types, lint, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FRONTEND
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: FRONTEND/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx eslint src
+      - run: npm run build

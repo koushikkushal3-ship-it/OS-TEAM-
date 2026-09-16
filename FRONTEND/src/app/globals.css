@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* TEAM OS design tokens */
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --color-canvas: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-subtle: #f8f9fb;
+  --color-line: #e3e6eb;
+  --color-line-strong: #cfd4dc;
+  --color-ink: #111827;
+  --color-ink-soft: #4b5563;
+  --color-ink-faint: #8a93a2;
+
+  --color-rail: #0e1525;
+  --color-rail-soft: #182137;
+  --color-rail-line: #232d45;
+  --color-rail-text: #aab3c5;
+
+  --color-brand: #0f766e;
+  --color-brand-strong: #0b5c56;
+  --color-brand-soft: #e6f4f2;
+
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+  --color-warn: #b45309;
+  --color-warn-soft: #fef3e2;
+  --color-ok: #067647;
+  --color-ok-soft: #e7f6ee;
+
+  /* Master Admin control plane */
+  --color-master: #7a1f2b;
+  --color-master-soft: #fbeef0;
+}
+
+html {
+  background: var(--color-canvas);
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+dialog::backdrop {
+  background: rgb(14 21 37 / 0.45);
+}
