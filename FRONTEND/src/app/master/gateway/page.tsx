@@ -49,6 +49,8 @@ export default function GatewayPage() {
 
   if (me.data && !me.data.master) notFound();
   if (status.error instanceof ApiError && status.error.status === 404) notFound();
+  // Any other failure is shown instead of an endless "Checking access".
+  const statusError = status.error && !(status.error instanceof ApiError && status.error.status === 404) ? errorMessage(status.error) : null;
 
   const s = status.data;
   const codeStep = !!s && s.gatewayEnabled && !s.codeVerified;
@@ -74,7 +76,7 @@ export default function GatewayPage() {
 
           {!s ? (
             <div className="text-rail-text">
-              <Spinner label="Checking access" />
+              {statusError ? <p className="text-center text-sm text-red-300">{statusError}</p> : <Spinner label="Checking access" />}
             </div>
           ) : (
             <>

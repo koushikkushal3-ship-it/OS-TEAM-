@@ -72,7 +72,9 @@ export class AccessGuard implements CanActivate {
 
     // A password set by Master Admin must be replaced before anything else is opened.
     const passwordRoutes = ['/auth/me', '/auth/logout', '/auth/password'];
-    if (user.mustChangePassword && !session.impersonatorId && !masterRoute && !passwordRoutes.includes(req.path)) {
+    // The Master gateway and console stay reachable, so a Master Admin can always get in and fix passwords.
+    const masterPath = masterRoute || req.path.startsWith('/master/');
+    if (user.mustChangePassword && !session.impersonatorId && !masterPath && !passwordRoutes.includes(req.path)) {
       throw new ForbiddenException({ message: 'Choose a new password to continue', code: 'PASSWORD_CHANGE_REQUIRED' });
     }
 
