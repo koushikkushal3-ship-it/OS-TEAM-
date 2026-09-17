@@ -1,7 +1,6 @@
 import {
   BarChart3,
   CalendarCheck2,
-  CalendarDays,
   Gauge,
   HeartHandshake,
   Plane,
@@ -46,7 +45,6 @@ export const NAV: NavSection[] = [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "core" },
       { href: "/work", label: "My Work", icon: ClipboardList, module: "tasks" },
       { href: "/schedule", label: "Schedule", icon: CalendarCheck2, module: "schedule" },
-      { href: "/calendar", label: "My calendar", icon: CalendarDays, module: "core" },
       { href: "/leave", label: "Leave", icon: Plane, module: "leave" },
       { href: "/kudos", label: "Kudos", icon: HeartHandshake, module: "kudos" },
     ],

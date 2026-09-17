@@ -97,32 +97,6 @@ export function useLeaveActions() {
   };
 }
 
-// ── Calendar ─────────────────────────────────────────────────────────────────
-
-export interface CalendarEntry {
-  id: string;
-  kind: "task" | "meeting" | "shift" | "leave" | "event" | "run" | "schedule";
-  title: string;
-  start: string;
-  end?: string | null;
-  allDay?: boolean;
-  location?: string | null;
-  link: string;
-}
-
-export const useCalendar = (from: Date, to: Date) =>
-  useQuery({
-    queryKey: ["calendar", from.toISOString(), to.toISOString()],
-    queryFn: () => api<CalendarEntry[]>("/calendar", { query: { from: from.toISOString(), to: to.toISOString() } }),
-  });
-
-export const useFeedToken = () => useQuery({ queryKey: ["calendar", "token"], queryFn: () => api<{ token: string | null }>("/calendar/feed-token") });
-
-export function useRotateFeedToken() {
-  const invalidate = useInvalidate(["calendar", "token"]);
-  return useMutation({ mutationFn: () => api<{ token: string }>("/calendar/feed-token", { method: "POST" }), onSuccess: invalidate });
-}
-
 // ── Search ───────────────────────────────────────────────────────────────────
 
 export interface SearchResults {

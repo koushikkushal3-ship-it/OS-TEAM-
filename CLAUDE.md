@@ -169,11 +169,15 @@ Everything else is `PLANNED` and its permissions are denied by the engine until 
     - **Moving databases**: `npm run copy-database` (dry run) / `-- --apply` copies every table from `DIRECT_URL` to an
       already-migrated `NEW_DIRECT_URL`, parents before children, and checks row counts.
 
+20. **"My calendar" was removed at the owner's request (2026-09-17)** — page, menu item, `/calendar` API and the private
+    .ics feed. The organization **Schedule** (with its month grid, `components/platform/month-calendar.tsx`) is the only
+    calendar. `users.calendar_token` is left in the database, unused.
+
 ## Platform features (Phase 7)
 
 | Portal | Features | Where |
 |---|---|---|
-| Worker | Notifications bell + page, global search (Ctrl K, permission-filtered), My calendar + private .ics feed, Leave requests, Kudos, My performance card, Shifts sign-up, install on phone (manifest + `public/sw.js`, network-only) | `modules/workspace`, `app/(app)/{notifications,calendar,leave,kudos,shifts}` |
+| Worker | Notifications bell + page, global search (Ctrl K, permission-filtered), Leave requests, Kudos, My performance card, Shifts sign-up, install on phone (manifest + `public/sw.js`, network-only) | `modules/workspace`, `app/(app)/{notifications,leave,kudos,shifts}` |
 | Lead | Workload (`task.assign`), event templates (`POST /events/:id/duplicate`), run of show, shifts management, budget health (80% warning), Google Sheets export (`POST /reports/export-sheet`, CSV converted by Drive under `drive.file`) | `modules/event-ops`, `modules/automation`, `components/platform/event-ops.tsx` |
 | Master | View as, access map, sign-ins & security alerts (`control/alerts.ts`), system health (DB vs 500 MB, Google 100 test users, Drive quota), sign out everywhere, offboarding with handover, bulk invite (`control/csv.ts`), maintenance mode, recycle bin, backups to Drive (weekly, secrets excluded), approvals (two-person rule), undo from audit log (whitelisted actions only), branding, announcements, automation rules, policies page, temporary access (`permission_overrides.expires_at`) | `modules/control`, `app/master/(console)/*` |
 
@@ -196,7 +200,7 @@ countdown banner). Feature hooks in `src/features/*`, UI atoms in `src/component
 ## Testing
 
 ```bash
-cd BACKEND && npm test        # 74 unit tests (+ password 3, spreadsheet 2)
+cd BACKEND && npm test        # 70 unit tests (ics tests removed with My calendar)
 cd FRONTEND && npm run build  # type-check + build
 ```
 

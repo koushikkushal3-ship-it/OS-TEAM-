@@ -1,6 +1,6 @@
 /**
  * Platform features end-to-end: per-person access, notifications, read-only preview,
- * maintenance mode, recycle bin, two-person rule, leave, calendar feed and search.
+ * maintenance mode, recycle bin, two-person rule, leave and search.
  * Same requirements as app.e2e-spec.ts — disposable, freshly seeded database.
  */
 import type { INestApplication } from '@nestjs/common';
@@ -191,9 +191,6 @@ describe.skipIf(!run)('TEAM OS platform features (e2e)', () => {
     await member.patch(`/schedule/${entry.body.id}`).send({ title: 'Changed', startsAt: from, endsAt: from }).expect(403);
     await member.delete(`/schedule/${entry.body.id}`).expect(403);
 
-    const cal = await member.get('/calendar').query({ from, to }).expect(200);
-    expect(cal.body.some((c: { kind: string }) => c.kind === 'schedule')).toBe(true);
-
     await master.delete(`/schedule/${teamOnly.body.id}`).expect(204);
     const bin = await master.get('/master/control/bin').expect(200);
     expect(bin.body.items.some((b: { entityId: string; entityType: string }) => b.entityId === teamOnly.body.id && b.entityType === 'schedule_entry')).toBe(true);
@@ -224,14 +221,6 @@ describe.skipIf(!run)('TEAM OS platform features (e2e)', () => {
     await privilege(memberEmail);
     await member.post(`/master/control/approvals/${pending.body.requestId}/approve`).expect(201);
     expect(await prisma.userRole.count({ where: { userId: third.body.id, roleId: masterRole.id } })).toBe(1);
-  });
-
-  it('calendar feed is private by token and serves iCalendar', async () => {
-    const { body } = await member.post('/calendar/feed-token').expect(201);
-    const feed = await request(app.getHttpServer()).get(`/calendar/feed/${body.token}.ics`).expect(200);
-    expect(feed.headers['content-type']).toContain('text/calendar');
-    expect(feed.text).toContain('BEGIN:VCALENDAR');
-    await request(app.getHttpServer()).get('/calendar/feed/not-a-real-token.ics').expect(404);
   });
 
   it('search finds my task and bulk invite checks rows before creating anyone', async () => {

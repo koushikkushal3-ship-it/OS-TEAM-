@@ -5,34 +5,24 @@ import {
   ForbiddenException,
   Get,
   HttpCode,
-  Injectable,
   Module,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
   Req,
-  Res,
 } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
-import type { Response } from 'express';
 import { z } from 'zod';
-import { env } from '../../config/env.js';
 import { Public, RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { ZodPipe } from '../../common/pipes/zod.pipe.js';
 import { type AuthenticatedRequest, actorFrom } from '../../common/types.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
-import type { AuthContext } from '../permissions/permission-engine.js';
 import { PermissionService } from '../permissions/permission.service.js';
 import { PlatformSettingsService } from '../platform/platform-settings.service.js';
 import { notify, teamLeadsOf } from '../platform/records.js';
-import { type CalendarItem, buildIcs } from './ics.js';
-import { scheduleVisibility } from '../schedule/schedule.module.js';
 
 const person = { select: { id: true, name: true, avatarUrl: true } } as const;
-const OPEN_TASKS = ['BACKLOG', 'ASSIGNED', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW'] as const;
 
 // ── Notifications ────────────────────────────────────────────────────────────
 
@@ -241,117 +231,6 @@ export class LeaveController {
   }
 }
 
-// ── Calendar ─────────────────────────────────────────────────────────────────
-
-export interface CalendarEntry extends CalendarItem {
-  kind: 'task' | 'meeting' | 'shift' | 'leave' | 'event' | 'run' | 'schedule';
-  link: string;
-}
-
-@Injectable()
-export class CalendarService {
-  constructor(private readonly prisma: PrismaService) {}
-
-  /** Everything with a date that belongs to this person, in one list. */
-  async items(auth: Pick<AuthContext, 'userId' | 'organizationId' | 'departmentId' | 'teamIds' | 'eventIds'>, from: Date, to: Date): Promise<CalendarEntry[]> {
-    const [tasks, meetings, shifts, leave, events, run, schedule] = await Promise.all([
-      this.prisma.task.findMany({
-        where: { assignedToId: auth.userId, dueDate: { gte: from, lte: to }, status: { in: [...OPEN_TASKS] } },
-        select: { id: true, title: true, dueDate: true },
-      }),
-      this.prisma.meeting.findMany({
-        where: { participants: { some: { userId: auth.userId } }, scheduledStart: { gte: from, lte: to }, status: { not: 'CANCELLED' } },
-        select: { id: true, title: true, scheduledStart: true, scheduledEnd: true, joinUrl: true, location: true },
-      }),
-      this.prisma.shift.findMany({
-        where: { assignments: { some: { userId: auth.userId } }, startsAt: { gte: from, lte: to } },
-        select: { id: true, title: true, startsAt: true, endsAt: true, location: true, eventId: true, event: { select: { name: true } } },
-      }),
-      this.prisma.leaveRequest.findMany({
-        where: { userId: auth.userId, status: 'APPROVED', startDate: { lte: to }, endDate: { gte: from } },
-        select: { id: true, type: true, startDate: true, endDate: true },
-      }),
-      this.prisma.event.findMany({
-        where: {
-          organizationId: auth.organizationId,
-          startDate: { not: null, lte: to },
-          OR: [{ endDate: null }, { endDate: { gte: from } }],
-          AND: [{ OR: [{ id: { in: auth.eventIds } }, { teams: { some: { teamId: { in: auth.teamIds } } } }] }],
-        },
-        select: { id: true, name: true, startDate: true, endDate: true, venue: true },
-      }),
-      this.prisma.runItem.findMany({
-        where: { ownerId: auth.userId, startsAt: { gte: from, lte: to } },
-        select: { id: true, title: true, startsAt: true, endsAt: true, eventId: true },
-      }),
-      this.prisma.scheduleEntry.findMany({
-        where: { ...scheduleVisibility(auth), startsAt: { lte: to }, endsAt: { gte: from } },
-        select: { id: true, title: true, startsAt: true, endsAt: true, allDay: true, location: true, description: true },
-      }),
-    ]);
-
-    const items: CalendarEntry[] = [
-      ...tasks.map((t) => ({ kind: 'task' as const, id: `task-${t.id}`, title: `Due: ${t.title}`, start: t.dueDate!, allDay: true, link: `/tasks/${t.id}` })),
-      ...meetings.map((m) => ({ kind: 'meeting' as const, id: `meeting-${m.id}`, title: m.title, start: m.scheduledStart, end: m.scheduledEnd, location: m.location ?? m.joinUrl, link: `/meetings/${m.id}` })),
-      ...shifts.map((s) => ({ kind: 'shift' as const, id: `shift-${s.id}`, title: `Shift: ${s.title} (${s.event.name})`, start: s.startsAt, end: s.endsAt, location: s.location, link: `/events/${s.eventId}` })),
-      ...leave.map((l) => ({ kind: 'leave' as const, id: `leave-${l.id}`, title: l.type, start: l.startDate, end: l.endDate, allDay: true, link: '/leave' })),
-      ...events.map((e) => ({ kind: 'event' as const, id: `event-${e.id}`, title: e.name, start: e.startDate!, end: e.endDate ?? e.startDate, allDay: true, location: e.venue, link: `/events/${e.id}` })),
-      ...schedule.map((s) => ({ kind: 'schedule' as const, id: `schedule-${s.id}`, title: s.title, start: s.startsAt, end: s.endsAt, allDay: s.allDay, location: s.location, description: s.description, link: '/schedule' })),
-      ...run.map((r) => ({ kind: 'run' as const, id: `run-${r.id}`, title: `Run of show: ${r.title}`, start: r.startsAt, end: r.endsAt, link: `/events/${r.eventId}` })),
-    ];
-    return items.sort((a, b) => a.start.getTime() - b.start.getTime());
-  }
-}
-
-const rangeQuery = z.object({ from: z.coerce.date(), to: z.coerce.date() });
-
-@Controller('calendar')
-export class CalendarController {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly calendar: CalendarService,
-  ) {}
-
-  @Get()
-  list(@Req() req: AuthenticatedRequest, @Query(new ZodPipe(rangeQuery)) q: z.infer<typeof rangeQuery>) {
-    if (q.to.getTime() - q.from.getTime() > 400 * 86_400_000) throw new BadRequestException('Range is too long');
-    return this.calendar.items(req.auth, q.from, q.to);
-  }
-
-  @Get('feed-token')
-  async feedToken(@Req() req: AuthenticatedRequest) {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: req.user.id }, select: { calendarToken: true } });
-    return { token: user.calendarToken };
-  }
-
-  /** Creates (or replaces, which revokes the old link) the private subscription token. */
-  @Post('feed-token')
-  async rotateFeedToken(@Req() req: AuthenticatedRequest) {
-    const token = randomBytes(24).toString('base64url');
-    await this.prisma.user.update({ where: { id: req.user.id }, data: { calendarToken: token } });
-    return { token };
-  }
-
-  /** Subscribable .ics feed. The unguessable token is the only credential, so it can be revoked by rotating. */
-  @Public()
-  @Get('feed/:token')
-  async feed(@Param('token') token: string, @Res() res: Response) {
-    const user = await this.prisma.user.findFirst({
-      where: { calendarToken: token.replace(/\.ics$/, ''), status: 'ACTIVE' },
-      select: { id: true, name: true, organizationId: true, departmentId: true, teamMemberships: { select: { teamId: true } }, eventMembers: { select: { eventId: true } } },
-    });
-    if (!user) throw new NotFoundException();
-    const now = Date.now();
-    const items = await this.calendar.items(
-      { userId: user.id, organizationId: user.organizationId, departmentId: user.departmentId, teamIds: user.teamMemberships.map((t) => t.teamId), eventIds: user.eventMembers.map((e) => e.eventId) },
-      new Date(now - 30 * 86_400_000),
-      new Date(now + 180 * 86_400_000),
-    );
-    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-    res.send(buildIcs(`TEAM OS · ${user.name}`, items.map((i) => ({ ...i, url: `${env.FRONTEND_URL}${i.link}` }))));
-  }
-}
-
 // ── Global search ────────────────────────────────────────────────────────────
 
 @Controller('search')
@@ -417,7 +296,6 @@ export class PlatformController {
 }
 
 @Module({
-  controllers: [NotificationsController, AnnouncementsController, KudosController, LeaveController, CalendarController, SearchController, PlatformController],
-  providers: [CalendarService],
+  controllers: [NotificationsController, AnnouncementsController, KudosController, LeaveController, SearchController, PlatformController],
 })
 export class WorkspaceModule {}
