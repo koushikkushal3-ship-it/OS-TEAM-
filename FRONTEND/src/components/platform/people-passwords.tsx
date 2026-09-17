@@ -8,6 +8,7 @@ import { useRoles } from "@/features/administration/api";
 import { useDepartments } from "@/features/people/api";
 import { useControl } from "@/features/platform/api";
 import { errorMessage } from "@/lib/api/client";
+import { useMe } from "@/lib/auth/use-me";
 import type { Person } from "@/lib/api/types";
 import { NewPasswordField, passwordHint } from "./password";
 
@@ -108,6 +109,8 @@ export function AddPersonDialog({ onClose }: { onClose: () => void }) {
 
 export function SetPasswordDialog({ person, onClose }: { person: Person; onClose: () => void }) {
   const { setPassword } = useControl();
+  const { data: me } = useMe();
+  const isSelf = me?.user.id === person.id;
   const [password, setValue] = useState("");
   const [mustChangePassword, setMustChange] = useState(true);
   const done = setPassword.isSuccess;
@@ -131,10 +134,14 @@ export function SetPasswordDialog({ person, onClose }: { person: Person; onClose
       ) : (
         <>
           <NewPasswordField id="sp-password" email={person.email} value={password} onChange={setValue} />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="size-4 accent-brand" checked={mustChangePassword} onChange={(e) => setMustChange(e.target.checked)} />
-            Ask them to choose their own password next time
-          </label>
+          {isSelf ? (
+            <p className="text-xs text-ink-soft">This is your own password. Write it down — you will sign in with it next time.</p>
+          ) : (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="size-4 accent-brand" checked={mustChangePassword} onChange={(e) => setMustChange(e.target.checked)} />
+              Ask them to choose their own password next time
+            </label>
+          )}
         </>
       )}
     </Dialog>

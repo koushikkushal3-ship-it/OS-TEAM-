@@ -354,10 +354,12 @@ export class ControlController {
     const person = await this.person(req, id);
     const problem = passwordProblem(body.password, person.email);
     if (problem) throw new BadRequestException(problem);
-    await this.prisma.user.update({ where: { id }, data: { passwordHash: await argon2.hash(body.password), passwordChangedAt: new Date(), mustChangePassword: body.mustChangePassword } });
+    // Someone who sets their own password already knows it; never ask them to replace it again.
+    const mustChangePassword = id === req.user.id ? false : body.mustChangePassword;
+    await this.prisma.user.update({ where: { id }, data: { passwordHash: await argon2.hash(body.password), passwordChangedAt: new Date(), mustChangePassword } });
     // Never cut off the Master Admin's own current session.
     await this.prisma.session.updateMany({ where: { userId: id, revokedAt: null, id: { not: req.session.id } }, data: { revokedAt: new Date() } });
-    await this.audit.record(actorFrom(req), { action: 'user.password_set', entityType: 'user', entityId: id, newValue: { user: person.email, mustChangePassword: body.mustChangePassword } });
+    await this.audit.record(actorFrom(req), { action: 'user.password_set', entityType: 'user', entityId: id, newValue: { user: person.email, mustChangePassword } });
     return { ok: true };
   }
 
