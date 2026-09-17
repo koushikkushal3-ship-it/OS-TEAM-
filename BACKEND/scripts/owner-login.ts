@@ -15,24 +15,51 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }, { schema: process.env.DATABASE_SCHEMA ?? 'app' }),
 });
 
-function ask(question: string, hidden = false): Promise<string> {
+// One line reader for the whole run, so typed or pasted answers are never lost between questions.
+const reader = createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+const pending: string[] = [];
+const waiting: ((line: string) => void)[] = [];
+reader.on('line', (line) => {
+  const next = waiting.shift();
+  if (next) next(line);
+  else pending.push(line);
+});
+const nextLine = () => new Promise<string>((resolve) => (pending.length ? resolve(pending.shift()!) : waiting.push(resolve)));
+
+async function ask(question: string, hidden = false): Promise<string> {
+  process.stdout.write(question);
+  if (!hidden || !process.stdin.isTTY) {
+    const answer = await nextLine();
+    if (hidden) process.stdout.write('\n');
+    return hidden ? answer : answer.trim();
+  }
+  // Read key by key without echoing, so the password never appears on screen (works in PowerShell and cmd).
+  reader.pause();
   return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    if (hidden) {
-      // Print the question, then swallow what is typed instead of echoing it.
-      process.stdout.write(question);
-      (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput = () => undefined;
-      rl.question('', (answer) => {
-        rl.close();
-        process.stdout.write('\n');
-        resolve(answer);
-      });
-    } else {
-      rl.question(question, (answer) => {
-        rl.close();
-        resolve(answer.trim());
-      });
-    }
+    const stdin = process.stdin;
+    let value = '';
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    const onData = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') {
+          stdin.setRawMode(false);
+          stdin.removeListener('data', onData);
+          process.stdout.write('\n');
+          reader.resume();
+          resolve(value);
+          return;
+        }
+        if (ch === '\u0003') {
+          process.stdout.write('\nCancelled.\n');
+          process.exit(1);
+        }
+        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1);
+        else if (ch >= ' ') value += ch;
+      }
+    };
+    stdin.on('data', onData);
   });
 }
 
@@ -85,7 +112,7 @@ async function main() {
     },
   });
   console.log(`\nDone. Sign in at http://localhost:3000 with ${newEmail} and the password you just typed.`);
-  console.log('Your gateway code and authenticator app for the Master console are unchanged.\n');
+  console.log('Then open http://localhost:3000/master: the gateway code is SEED_GATEWAY_CODE in BACKEND/.env; scan the QR code if asked.\n');
 }
 
 main()
@@ -93,4 +120,7 @@ main()
     console.error(`\nNot changed: ${(err as Error).message}\n`);
     process.exitCode = 1;
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    reader.close();
+    await prisma.$disconnect();
+  });
