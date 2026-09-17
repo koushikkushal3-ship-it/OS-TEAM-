@@ -46,7 +46,8 @@ describe.skipIf(!run)('TEAM OS password sign-in, storage and exports (e2e)', () 
     await guest.post('/auth/first-setup').send({ email: MASTER_EMAIL, gatewayCode: 'wrong-code', password: 'Sunrise2026x' }).expect(401);
     await guest.post('/auth/first-setup').send({ email: MASTER_EMAIL, gatewayCode: process.env.SEED_GATEWAY_CODE, password: 'Sunrise2026x' }).expect(204);
     expect((await guest.get('/auth/me').expect(200)).body.user.email).toBe(MASTER_EMAIL);
-    expect((await guest.get('/auth/providers').expect(200)).body.firstSetup).toBe(false);
+    // Other specs may add Master Admins without a password, so check this account rather than the global flag.
+    expect((await prisma.user.findFirstOrThrow({ where: { email: MASTER_EMAIL } })).passwordHash).not.toBeNull();
     await request(app.getHttpServer()).post('/auth/first-setup').send({ email: MASTER_EMAIL, gatewayCode: process.env.SEED_GATEWAY_CODE, password: 'Other2026xy' }).expect(401);
     await request(app.getHttpServer()).post('/auth/login').send({ email: MASTER_EMAIL, password: 'Sunrise2026x' }).expect(204);
   });
