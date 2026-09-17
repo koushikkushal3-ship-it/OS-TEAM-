@@ -11,7 +11,7 @@ import { BrandColor } from "@/components/layout/platform-bar";
 import { useBranding } from "@/features/platform/api";
 
 const ERRORS: Record<string, string> = {
-  not_invited: "This account hasn't been added to TEAM OS yet. Ask your Master Admin.",
+  not_invited: "This account hasn't been added to TEAM OS yet. Ask your Admin.",
   disabled: "Your TEAM OS access has been disabled. Contact your administrator.",
   account_mismatch: "This email is linked to a different Google account.",
   unverified_email: "Your Google email address isn't verified.",
@@ -85,7 +85,7 @@ function LoginForm() {
         <img src={branding.data.logoUrl} alt="" className="mb-6 size-14 rounded-xl object-contain" />
       )}
       <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-      <p className="mt-1 text-sm text-ink-soft">{branding.data?.loginMessage ?? "Use the email and password your Master Admin gave you."}</p>
+      <p className="mt-1 text-sm text-ink-soft">{branding.data?.loginMessage ?? "Use the email and password your Admin gave you."}</p>
       <BrandColor />
 
       <div className="mt-8 space-y-4">
@@ -127,7 +127,7 @@ function LoginForm() {
           <Button type="submit" className="w-full" loading={loading}>
             Sign in
           </Button>
-          <p className="text-center text-xs text-ink-faint">Forgot your password? Ask your Master Admin to set a new one.</p>
+          <p className="text-center text-xs text-ink-faint">Forgot your password? Ask your Admin to set a new one.</p>
         </form>
 
         {providers.data?.firstSetup && (

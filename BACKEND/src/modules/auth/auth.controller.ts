@@ -14,7 +14,8 @@ import { SessionService } from './session.service.js';
 
 const STATE_COOKIE = 'teamos_oauth_state';
 
-// 5 wrong passwords per email per 15 minutes, and 50 per network address (a whole office can share one), before a pause.
+// Password sign-in and password change have no attempt limit (owner's decision, 2026-09-17).
+// Only first-time setup, which is proven with the gateway code, still pauses after repeated failures.
 const emailLimiter = new FailureLimiter(5, 15 * 60_000);
 const ipLimiter = new FailureLimiter(50, 15 * 60_000);
 
@@ -80,17 +81,11 @@ export class AuthController {
   @Post('login')
   @HttpCode(204)
   async login(@Body(new ZodPipe(loginBody)) body: z.infer<typeof loginBody>, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const ipKey = `ip:${req.ip}`;
-    emailLimiter.assertAllowed(body.email);
-    ipLimiter.assertAllowed(ipKey);
     try {
       const token = await this.auth.loginWithPassword(body.email, body.password, { ip: req.ip, userAgent: req.headers['user-agent'] });
-      emailLimiter.reset(body.email);
       res.cookie(this.sessions.cookieName, token, this.sessions.cookieOptions());
     } catch (err) {
       if (!(err instanceof LoginError)) throw err;
-      emailLimiter.fail(body.email);
-      ipLimiter.fail(ipKey);
       if (err.reason === 'disabled') throw new UnauthorizedException({ message: 'This account is disabled. Contact your Master Admin.', code: 'disabled' });
       throw new UnauthorizedException({ message: 'Wrong email or password', code: 'wrong_password' });
     }
@@ -118,14 +113,10 @@ export class AuthController {
   @Post('password')
   @HttpCode(204)
   async changePassword(@Req() req: AuthenticatedRequest, @Body(new ZodPipe(changeBody)) body: z.infer<typeof changeBody>) {
-    const key = `change:${req.user.id}`;
-    emailLimiter.assertAllowed(key);
     try {
       await this.auth.changePassword(req.user.id, body.currentPassword, body.newPassword);
-      emailLimiter.reset(key);
     } catch (err) {
       if (err instanceof LoginError) {
-        emailLimiter.fail(key);
         throw new UnauthorizedException({ message: 'Your current password is not right', code: 'wrong_password' });
       }
       throw err;

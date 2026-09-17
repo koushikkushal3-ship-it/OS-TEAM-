@@ -92,15 +92,16 @@ describe.skipIf(!run)('TEAM OS password sign-in, storage and exports (e2e)', () 
     await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'Reset2026ab' }).expect(204);
   });
 
-  it('a disabled person cannot sign in, and repeated wrong passwords are paused', async () => {
+  it('a disabled person cannot sign in, and wrong passwords never lock anyone out', async () => {
     await master.post(`/users/${personId}/disable`).expect(201);
     const res = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'Reset2026ab' }).expect(401);
     expect(res.body.code).toBe('disabled');
     await master.post(`/users/${personId}/enable`).expect(201);
 
     const unknown = `nobody-${suffix}@teamos.test`;
-    for (let i = 0; i < 5; i++) await request(app.getHttpServer()).post('/auth/login').send({ email: unknown, password: 'Guess2026' }).expect(401);
-    await request(app.getHttpServer()).post('/auth/login').send({ email: unknown, password: 'Guess2026' }).expect(429);
+    for (let i = 0; i < 8; i++) await request(app.getHttpServer()).post('/auth/login').send({ email: unknown, password: 'Guess2026' }).expect(401);
+    for (let i = 0; i < 8; i++) await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'Wrong2026x' }).expect(401);
+    await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'Reset2026ab' }).expect(204);
   });
 
   it('bulk import hands back generated passwords that work', async () => {

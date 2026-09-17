@@ -154,8 +154,8 @@ Everything else is `PLANNED` and its permissions are denied by the engine until 
 19. **No Google dependency (owner's decision, 2026-09-17).** The owner's Google account `work.on.off.ox@gmail.com`
     was disabled by Google, so:
     - **Sign-in is email + password**, managed by Master Admin only (Master → People → **Add person** / **Password** /
-      **Invite many** with a password column; blanks are generated and shown once). argon2 hashes; `/auth/login`
-      pauses after 5 wrong tries per email (20 per IP) in 15 min; unknown emails cost the same time as wrong passwords.
+      **Invite many** with a password column; blanks are generated and shown once). argon2 hashes; `/auth/login` and
+      `/auth/password` have **no attempt limit** (owner's decision); unknown emails cost the same time as wrong passwords.
       `mustChangePassword` forces `PasswordChangeScreen` and the guard returns 403 `PASSWORD_CHANGE_REQUIRED` for
       everything except `/auth/me|password|logout` and the Master plane. Changing/resetting a password revokes the
       person's other sessions. Google sign-in only shows when `AUTH_GOOGLE_ENABLED=true`.
