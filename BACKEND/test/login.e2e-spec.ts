@@ -40,6 +40,17 @@ describe.skipIf(!run)('TEAM OS password sign-in, storage and exports (e2e)', () 
     await prisma.$disconnect();
   });
 
+  it('first-time Master setup: needs the gateway code, signs in, and works only once', async () => {
+    const guest = request.agent(app.getHttpServer());
+    expect((await guest.get('/auth/providers').expect(200)).body.firstSetup).toBe(true);
+    await guest.post('/auth/first-setup').send({ email: MASTER_EMAIL, gatewayCode: 'wrong-code', password: 'Sunrise2026x' }).expect(401);
+    await guest.post('/auth/first-setup').send({ email: MASTER_EMAIL, gatewayCode: process.env.SEED_GATEWAY_CODE, password: 'Sunrise2026x' }).expect(204);
+    expect((await guest.get('/auth/me').expect(200)).body.user.email).toBe(MASTER_EMAIL);
+    expect((await guest.get('/auth/providers').expect(200)).body.firstSetup).toBe(false);
+    await request(app.getHttpServer()).post('/auth/first-setup').send({ email: MASTER_EMAIL, gatewayCode: process.env.SEED_GATEWAY_CODE, password: 'Other2026xy' }).expect(401);
+    await request(app.getHttpServer()).post('/auth/login').send({ email: MASTER_EMAIL, password: 'Sunrise2026x' }).expect(204);
+  });
+
   it('only Master Admin adds people with a password, and weak passwords are refused', async () => {
     const role = await prisma.role.findFirstOrThrow({ where: { key: 'creative_member' } });
     await master.post('/master/control/people').send({ name: 'Pass Word', email, password: 'short1' }).expect(400);

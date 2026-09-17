@@ -44,20 +44,31 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [devEmail, setDevEmail] = useState("");
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setup, setSetup] = useState({ email: "", gatewayCode: "", password: "", again: "" });
 
   const branding = useBranding();
   const providers = useQuery({
     queryKey: ["auth", "providers"],
-    queryFn: () => api<{ password: boolean; google: boolean; devLogin: boolean }>("/auth/providers"),
+    queryFn: () => api<{ password: boolean; google: boolean; devLogin: boolean; firstSetup: boolean }>("/auth/providers"),
   });
 
-  const signIn = async (path: string, body: object) => {
+  const setupProblem =
+    setup.password && setup.password.length < 8
+      ? "Use at least 8 characters"
+      : setup.password && (!/[A-Za-z]/.test(setup.password) || !/[0-9]/.test(setup.password))
+        ? "Use both letters and numbers"
+        : setup.again && setup.again !== setup.password
+          ? "The two passwords do not match"
+          : null;
+
+  const signIn = async (path: string, body: object, to?: string) => {
     setLoading(true);
     setError(null);
     try {
       await api(path, { method: "POST", body });
       queryClient.clear();
-      router.replace(next && next.startsWith("/") ? next : "/dashboard");
+      router.replace(to ?? (next && next.startsWith("/") ? next : "/dashboard"));
     } catch (err) {
       setError(errorMessage(err));
       setLoading(false);
@@ -118,6 +129,44 @@ function LoginForm() {
           </Button>
           <p className="text-center text-xs text-ink-faint">Forgot your password? Ask your Master Admin to set a new one.</p>
         </form>
+
+        {providers.data?.firstSetup && (
+          <div className="rounded-xl border border-brand/30 bg-brand-soft/40 p-4">
+            {!setupOpen ? (
+              <button type="button" onClick={() => { setSetupOpen(true); setError(null); }} className="w-full text-left text-sm">
+                <span className="font-medium text-brand-strong">First time as Master Admin?</span>
+                <span className="block text-xs text-ink-soft">Set your password here with your gateway code.</span>
+              </button>
+            ) : (
+              <form
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!setupProblem && setup.password === setup.again) void signIn("/auth/first-setup", { email: setup.email, gatewayCode: setup.gatewayCode, password: setup.password }, "/master");
+                }}
+              >
+                <p className="text-sm font-medium text-brand-strong">Set your Master Admin password</p>
+                <p className="text-xs text-ink-soft">Works once, only for a Master Admin with no password yet. The gateway code is the SEED_GATEWAY_CODE line in BACKEND/.env.</p>
+                <Field label="Master Admin email" htmlFor="fs-email">
+                  <Input id="fs-email" type="email" autoComplete="username" required value={setup.email} onChange={(e) => setSetup((f) => ({ ...f, email: e.target.value }))} />
+                </Field>
+                <Field label="Gateway code" htmlFor="fs-code">
+                  <Input id="fs-code" type="password" autoComplete="off" required value={setup.gatewayCode} onChange={(e) => setSetup((f) => ({ ...f, gatewayCode: e.target.value }))} />
+                </Field>
+                <Field label="New password" htmlFor="fs-pw" hint="At least 8 characters, letters and numbers">
+                  <Input id="fs-pw" type="password" autoComplete="new-password" required value={setup.password} onChange={(e) => setSetup((f) => ({ ...f, password: e.target.value }))} />
+                </Field>
+                <Field label="New password again" htmlFor="fs-pw2">
+                  <Input id="fs-pw2" type="password" autoComplete="new-password" required value={setup.again} onChange={(e) => setSetup((f) => ({ ...f, again: e.target.value }))} />
+                </Field>
+                <ErrorNote>{setupProblem}</ErrorNote>
+                <Button type="submit" className="w-full" loading={loading} disabled={!!setupProblem || !setup.again}>
+                  Set password and open Master
+                </Button>
+              </form>
+            )}
+          </div>
+        )}
 
         {providers.data?.google && (
           <a

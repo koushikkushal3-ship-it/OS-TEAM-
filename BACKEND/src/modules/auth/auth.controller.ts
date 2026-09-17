@@ -19,6 +19,7 @@ const emailLimiter = new FailureLimiter(5, 15 * 60_000);
 const ipLimiter = new FailureLimiter(20, 15 * 60_000);
 
 const loginBody = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1).max(200) });
+const firstSetupBody = z.object({ email: z.string().trim().toLowerCase().email(), gatewayCode: z.string().min(1).max(200), password: z.string().min(1).max(200) });
 const changeBody = z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(1).max(200) });
 
 @Controller('auth')
@@ -32,8 +33,8 @@ export class AuthController {
   /** Which sign-in methods the login page should show. */
   @Public()
   @Get('providers')
-  providers() {
-    return { password: true, google: googleLoginEnabled(), devLogin: devLoginEnabled };
+  async providers() {
+    return { password: true, google: googleLoginEnabled(), devLogin: devLoginEnabled, firstSetup: await this.auth.firstSetupAvailable() };
   }
 
   @Public()
@@ -92,6 +93,25 @@ export class AuthController {
       ipLimiter.fail(ipKey);
       if (err.reason === 'disabled') throw new UnauthorizedException({ message: 'This account is disabled. Contact your Master Admin.', code: 'disabled' });
       throw new UnauthorizedException({ message: 'Wrong email or password', code: 'wrong_password' });
+    }
+  }
+
+  /** First Master Admin password, proven with the gateway code. Signs them in on success. */
+  @Public()
+  @Post('first-setup')
+  @HttpCode(204)
+  async firstSetup(@Body(new ZodPipe(firstSetupBody)) body: z.infer<typeof firstSetupBody>, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const key = `setup:${req.ip}`;
+    ipLimiter.assertAllowed(key);
+    emailLimiter.assertAllowed(`setup:${body.email}`);
+    try {
+      const token = await this.auth.firstSetup(body.email, body.gatewayCode, body.password, { ip: req.ip, userAgent: req.headers['user-agent'] });
+      res.cookie(this.sessions.cookieName, token, this.sessions.cookieOptions());
+    } catch (err) {
+      if (!(err instanceof LoginError)) throw err;
+      ipLimiter.fail(key);
+      emailLimiter.fail(`setup:${body.email}`);
+      throw new UnauthorizedException({ message: 'That email or gateway code is not right, or setup was already done', code: 'setup_failed' });
     }
   }
 

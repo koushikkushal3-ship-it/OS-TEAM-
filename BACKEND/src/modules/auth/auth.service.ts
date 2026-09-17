@@ -107,6 +107,38 @@ export class AuthService {
     return this.completeLogin(user.id, meta, {});
   }
 
+  /** True while some Master Admin still has no password — the sign-in page then offers first-time setup. */
+  async firstSetupAvailable() {
+    const count = await this.prisma.user.count({
+      where: { passwordHash: null, status: { not: 'DISABLED' }, roles: { some: { role: { isMasterAdmin: true, isActive: true } } } },
+    });
+    return count > 0;
+  }
+
+  /**
+   * One-time Master Admin password setup from the browser, proven by the gateway code (which only the
+   * owner has, in BACKEND/.env). Works only for a Master Admin who has no password yet; afterwards the
+   * normal sign-in and Master Admin → People → Password take over.
+   */
+  async firstSetup(email: string, gatewayCode: string, password: string, meta: { ip?: string; userAgent?: string }) {
+    const user = await this.prisma.user.findFirst({
+      where: { email: email.trim().toLowerCase(), passwordHash: null, status: { not: 'DISABLED' }, roles: { some: { role: { isMasterAdmin: true, isActive: true } } } },
+    });
+    const row = await this.prisma.systemSetting.findUnique({ where: { key: 'master.gateway' } });
+    const codeHash = (row?.value as { codeHash?: string | null } | undefined)?.codeHash;
+    const codeOk = codeHash ? await argon2.verify(codeHash, gatewayCode).catch(() => false) : false;
+    if (!user || !codeOk) throw new LoginError('wrong_password');
+
+    const problem = passwordProblem(password, user.email);
+    if (problem) throw new BadRequestException(problem);
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await argon2.hash(password), passwordChangedAt: new Date(), mustChangePassword: false } });
+    await this.audit.record(
+      { userId: user.id, organizationId: user.organizationId, ip: meta.ip, userAgent: meta.userAgent },
+      { action: 'user.master_first_setup', entityType: 'user', entityId: user.id, newValue: { email: user.email } },
+    );
+    return this.completeLogin(user.id, meta, {});
+  }
+
   async changePassword(userId: string, current: string, next: string) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!user.passwordHash || !(await argon2.verify(user.passwordHash, current))) throw new LoginError('wrong_password');
