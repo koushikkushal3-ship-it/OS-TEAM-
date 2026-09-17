@@ -12,7 +12,8 @@ Design source (read only if a decision needs it, they are long):
 - `C:\Users\mypck\Downloads\TEAM_OS_Master_Plan.pdf` — 22 pages, 6-phase roadmap
 - `C:\Users\mypck\Downloads\TEAM OS — Complete Unified System Architecture.md` — 72 sections
 
-Owner: `work.on.off.ox@gmail.com` (Master Admin, name "KUSHAL.OX"). Organization renamed to "TEAM ON" in the app.
+Owner: `freefiresaisrk@gmail.com` (Master Admin, name "KUSHAL.OX"; the old Google account `work.on.off.ox@gmail.com` was
+disabled by Google on 2026-09-17). Organization "TEAM ON".
 
 ## Layout
 
@@ -27,12 +28,14 @@ read `FRONTEND/node_modules/next/dist/docs/` before changing framework-level thi
 
 ## Live setup (already working — do not redo)
 
-- Supabase project ref `jtoaynhjmrencleyedib`, region ap-south-1. Tables live in the **`app` schema** (not `public`,
-  so Supabase's data API does not expose them). Connection strings are in `BACKEND/.env` (git-ignored).
-- Google OAuth configured, consent screen **External + Testing** — every new person must also be added as a
-  **Test user** in Google Cloud Console or their sign-in is blocked.
+- Supabase project ref `ydkqjrmvwdyiaqpdytgf`, region ap-south-1 — a **new** project created 2026-09-17 under a
+  non-Google Supabase login, freshly migrated and seeded (the old project `jtoaynhjmrencleyedib` was abandoned; its
+  connection string was overwritten, so its few rows were not copied). Tables live in the **`app` schema**.
+  Connection strings are in `BACKEND/.env` (git-ignored); pooled URL needs `pgbouncer=true&schema=app`.
+- **Sign-in is email + password** (rule 19). `AUTH_GOOGLE_ENABLED=false`; no Google services are connected.
 - `AUTH_DEV_LOGIN=false` on the live config. Dev email login only exists when that flag is true and NODE_ENV is not production.
-- Master Admin gateway: secondary code + TOTP already enrolled by the owner. Privileged session length set to 100 minutes.
+- Master Admin gateway: code = `SEED_GATEWAY_CODE` in `BACKEND/.env`; the owner must enrol the authenticator again on the
+  new database (first gateway visit shows a QR). Set the owner password with `npm run owner-login` (terminal, hidden).
 
 Run it:
 
@@ -44,8 +47,7 @@ cd "E:\ADV TEAM WORK PORTEL\FRONTEND" && npm run dev
 ```
 
 Site http://localhost:3000, API http://localhost:4000. The site proxies `/api/*` to the API (`next.config.ts`
-rewrites), so the session cookie belongs to the site's own origin. Google redirect URI is
-`http://localhost:3000/api/auth/google/callback` — port 3000, with `/api/`.
+rewrites), so the session cookie belongs to the site's own origin.
 
 ## Phase status
 

@@ -57,6 +57,19 @@ async function main() {
     create: { name: orgName, slug: slugify(orgName) },
     update: {},
   });
+
+  if ((await prisma.automationRule.count({ where: { organizationId: org.id } })) === 0) {
+    await prisma.automationRule.createMany({
+      data: [
+        { organizationId: org.id, name: 'Overdue tasks', trigger: 'TASK_OVERDUE', config: { days: 2 }, enabled: true },
+        { organizationId: org.id, name: 'Budget warning', trigger: 'BUDGET_THRESHOLD', config: { percent: 80 }, enabled: true },
+        { organizationId: org.id, name: 'Weekly report', trigger: 'WEEKLY_REPORT', config: {}, enabled: true },
+        { organizationId: org.id, name: 'Tickets left open', trigger: 'TICKET_STALE', config: { hours: 48 }, enabled: false },
+        { organizationId: org.id, name: 'Two approvers for large expenses', trigger: 'EXPENSE_TWO_APPROVERS', config: { minAmount: 10000 }, enabled: false },
+      ],
+    });
+    console.log('✓ Default automation rules');
+  }
   console.log(`✓ Organization "${org.name}"`);
 
   // 3. Departments
@@ -129,7 +142,7 @@ async function main() {
       const has = await prisma.userRole.findFirst({ where: { userId: user.id, roleId, scopeType: 'ORGANIZATION' } });
       if (!has) await prisma.userRole.create({ data: { userId: user.id, roleId, scopeType: 'ORGANIZATION' } });
     }
-    console.log(`✓ Master Admin ${email} (sign in with this Google account)`);
+    console.log(`✓ Master Admin ${email} (set the password with: npm run owner-login)`);
   } else {
     console.warn('! SEED_MASTER_ADMIN_EMAIL not set — no Master Admin created');
   }
