@@ -14,9 +14,9 @@ import { SessionService } from './session.service.js';
 
 const STATE_COOKIE = 'teamos_oauth_state';
 
-// 5 wrong passwords per email per 15 minutes, and 20 per network address, before a pause.
+// 5 wrong passwords per email per 15 minutes, and 50 per network address (a whole office can share one), before a pause.
 const emailLimiter = new FailureLimiter(5, 15 * 60_000);
-const ipLimiter = new FailureLimiter(20, 15 * 60_000);
+const ipLimiter = new FailureLimiter(50, 15 * 60_000);
 
 const loginBody = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1).max(200) });
 const firstSetupBody = z.object({ email: z.string().trim().toLowerCase().email(), gatewayCode: z.string().min(1).max(200), password: z.string().min(1).max(200) });

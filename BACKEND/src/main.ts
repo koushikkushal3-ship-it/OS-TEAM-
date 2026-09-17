@@ -9,7 +9,7 @@ import { devLoginEnabled, env, googleConfigured } from './config/env.js';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.set('trust proxy', 1);
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({ origin: env.FRONTEND_URL, credentials: true });

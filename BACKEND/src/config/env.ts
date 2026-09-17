@@ -9,6 +9,8 @@ const bool = z
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
+  /** Proxies in front of the API: 1 locally, 2 on Render behind Vercel's /api rewrite. */
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),

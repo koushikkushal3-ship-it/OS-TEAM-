@@ -22,25 +22,19 @@ services:
         value: app
       - key: AUTH_DEV_LOGIN
         value: "false"
-      # Values below are secret or depend on your live address: Render asks for them on first setup.
-      # Copy DATABASE_URL, DIRECT_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and MFA_ENCRYPTION_KEY
-      # exactly from BACKEND/.env. MFA_ENCRYPTION_KEY must be identical, or the saved authenticator
-      # and Google connections cannot be read.
+      - key: AUTH_GOOGLE_ENABLED
+        value: "false"
+      # The website on Vercel forwards /api calls here, so there are two proxies in front of the API.
+      - key: TRUST_PROXY_HOPS
+        value: "2"
+      # Render asks for these on first setup. Copy DATABASE_URL, DIRECT_URL and MFA_ENCRYPTION_KEY
+      # exactly from BACKEND/.env — MFA_ENCRYPTION_KEY must be identical, or the saved authenticator
+      # setup cannot be read. FRONTEND_URL is your Vercel address (a placeholder is fine at first).
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
         sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
       - key: MFA_ENCRYPTION_KEY
         sync: false
       - key: FRONTEND_URL
-        sync: false
-      - key: GOOGLE_REDIRECT_URI
-        sync: false
-      - key: GOOGLE_DRIVE_REDIRECT_URI
-        sync: false
-      - key: GOOGLE_CALENDAR_REDIRECT_URI
         sync: false
