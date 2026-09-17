@@ -248,3 +248,6 @@ All six plan phases plus the platform features are built. Open work, in the orde
 4. **Google Calendar two-way sync** — only the read-only .ics feed exists.
 
 Deferred by the user's own decision: **no in-portal video**. See rule 7.
+Decided 2026-09-17: **keep TEAM OS's own email + password login** for the deadline. After it, consider adding Supabase
+Auth *alongside* (Master Admin still the only one creating accounts) for emailed reset links and one-time login codes;
+Google sign-in via Supabase would still need a Google Cloud OAuth client, and free Supabase email is heavily rate-limited.
