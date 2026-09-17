@@ -31,7 +31,7 @@ function Backups() {
   if (!data) return <Spinner />;
   return (
     <Card>
-      <CardHeader title="Backups" description="Every table except sessions and secrets, as a JSON file in the organization Drive (TEAM OS / Backups)." action={<DatabaseBackup className="size-4 text-ink-faint" />} />
+      <CardHeader title="Backups" description="Every table except sessions and secrets, saved as a JSON file inside TEAM OS. Download it to keep a copy on your computer." action={<DatabaseBackup className="size-4 text-ink-faint" />} />
       <div className="space-y-3 px-5 pb-5">
         <div className="flex flex-wrap items-center gap-3">
           <Switch label="Scheduled backups" checked={data.enabled} onChange={(v) => control.backupSettings.mutate({ enabled: v, everyDays: data.everyDays })} />
@@ -53,10 +53,12 @@ function Backups() {
                 {h.tables} tables · {h.rows.toLocaleString("en-IN")} rows · {mb(h.bytes)}
               </span>
               <span className="text-xs text-ink-faint">{h.by}</span>
-              {h.url && (
-                <a href={h.url} target="_blank" rel="noreferrer" className="ml-auto text-brand hover:underline">
-                  Open in Drive
+              {h.key ? (
+                <a href={`/api/master/control/backups/download?key=${encodeURIComponent(h.key)}`} className="ml-auto text-brand hover:underline">
+                  Download
                 </a>
+              ) : (
+                h.url && <span className="ml-auto text-xs text-ink-faint">in the old Google Drive</span>
               )}
             </li>
           ))}
@@ -70,7 +72,7 @@ function Backups() {
 export default function HealthPage() {
   const { data, isLoading } = useHealth();
   if (isLoading || !data) return <Spinner />;
-  const { database, people, drive } = data;
+  const { database, people } = data;
 
   return (
     <>
@@ -90,22 +92,18 @@ export default function HealthPage() {
           <div className="text-2xl font-semibold">
             {people.signInCapable} <span className="text-sm font-normal text-ink-soft">({people.active} active, {people.invited} invited)</span>
           </div>
-          <Meter used={people.signInCapable} limit={people.googleTestUserCap} label="of Google's 100 test users while in Testing" />
+          
         </Card>
         <Card className="space-y-3 p-5">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <HardDrive className="size-4 text-ink-faint" /> Google Drive
+            <HardDrive className="size-4 text-ink-faint" /> File storage
           </div>
-          {drive.connected ? (
-            <>
-              <div className="text-2xl font-semibold">{mb(drive.usageBytes)}</div>
-              {drive.usageBytes != null && <Meter used={drive.usageBytes} limit={drive.limitBytes} label={drive.email ?? "connected account"} />}
-            </>
-          ) : (
-            <p className="text-sm text-ink-soft">
-              Not connected. <Link href="/master/integrations" className="text-brand hover:underline">Connect Drive</Link> for files, Sheets exports and backups.
-            </p>
-          )}
+          <div className="text-2xl font-semibold">{data.storage.provider === "supabase" ? "Supabase Storage" : "Database"}</div>
+          <p className="text-sm text-ink-soft">
+            {data.storage.provider === "supabase"
+              ? "Uploads and backups go to a private Supabase bucket (1 GB free)."
+              : `Uploads and backups are kept in the database, up to ${data.storage.fileLimitMb} MB per file. Add Supabase Storage keys for bigger files.`}
+          </p>
         </Card>
       </div>
 

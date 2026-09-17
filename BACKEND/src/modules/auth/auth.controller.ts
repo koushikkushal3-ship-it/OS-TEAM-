@@ -1,8 +1,11 @@
-import { Body, Controller, Get, HttpCode, NotFoundException, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, NotFoundException, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { devLoginEnabled, env, googleConfigured, isProduction } from '../../config/env.js';
+import { devLoginEnabled, env, googleLoginEnabled, isProduction } from '../../config/env.js';
+import { FailureLimiter } from '../../common/utils/rate-limiter.js';
+import { actorFrom } from '../../common/types.js';
+import { AuditService } from '../audit/audit.service.js';
 import { Public } from '../../common/decorators/auth.decorators.js';
 import { ZodPipe } from '../../common/pipes/zod.pipe.js';
 import type { AuthenticatedRequest } from '../../common/types.js';
@@ -11,24 +14,32 @@ import { SessionService } from './session.service.js';
 
 const STATE_COOKIE = 'teamos_oauth_state';
 
+// 5 wrong passwords per email per 15 minutes, and 20 per network address, before a pause.
+const emailLimiter = new FailureLimiter(5, 15 * 60_000);
+const ipLimiter = new FailureLimiter(20, 15 * 60_000);
+
+const loginBody = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1).max(200) });
+const changeBody = z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(1).max(200) });
+
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
+    private readonly audit: AuditService,
   ) {}
 
   /** Which sign-in methods the login page should show. */
   @Public()
   @Get('providers')
   providers() {
-    return { google: googleConfigured(), devLogin: devLoginEnabled };
+    return { password: true, google: googleLoginEnabled(), devLogin: devLoginEnabled };
   }
 
   @Public()
   @Get('google')
   google(@Res() res: Response) {
-    if (!googleConfigured()) return res.redirect(`${env.FRONTEND_URL}/login?error=google_not_configured`);
+    if (!googleLoginEnabled()) return res.redirect(`${env.FRONTEND_URL}/login?error=google_not_configured`);
     const state = randomBytes(24).toString('base64url');
     res.cookie(STATE_COOKIE, state, {
       httpOnly: true,
@@ -61,6 +72,47 @@ export class AuthController {
     } catch (err) {
       return fail(err instanceof LoginError ? err.reason : 'google_failed');
     }
+  }
+
+  /** Email + password sign-in. Accounts and first passwords are created by Master Admin only. */
+  @Public()
+  @Post('login')
+  @HttpCode(204)
+  async login(@Body(new ZodPipe(loginBody)) body: z.infer<typeof loginBody>, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const ipKey = `ip:${req.ip}`;
+    emailLimiter.assertAllowed(body.email);
+    ipLimiter.assertAllowed(ipKey);
+    try {
+      const token = await this.auth.loginWithPassword(body.email, body.password, { ip: req.ip, userAgent: req.headers['user-agent'] });
+      emailLimiter.reset(body.email);
+      res.cookie(this.sessions.cookieName, token, this.sessions.cookieOptions());
+    } catch (err) {
+      if (!(err instanceof LoginError)) throw err;
+      emailLimiter.fail(body.email);
+      ipLimiter.fail(ipKey);
+      if (err.reason === 'disabled') throw new UnauthorizedException({ message: 'This account is disabled. Contact your Master Admin.', code: 'disabled' });
+      throw new UnauthorizedException({ message: 'Wrong email or password', code: 'wrong_password' });
+    }
+  }
+
+  @Post('password')
+  @HttpCode(204)
+  async changePassword(@Req() req: AuthenticatedRequest, @Body(new ZodPipe(changeBody)) body: z.infer<typeof changeBody>) {
+    const key = `change:${req.user.id}`;
+    emailLimiter.assertAllowed(key);
+    try {
+      await this.auth.changePassword(req.user.id, body.currentPassword, body.newPassword);
+      emailLimiter.reset(key);
+    } catch (err) {
+      if (err instanceof LoginError) {
+        emailLimiter.fail(key);
+        throw new UnauthorizedException({ message: 'Your current password is not right', code: 'wrong_password' });
+      }
+      throw err;
+    }
+    // Other devices signed in with the old password are signed out.
+    await this.sessions.revokeOthers(req.user.id, req.session.id);
+    await this.audit.record(actorFrom(req), { action: 'user.password_changed', entityType: 'user', entityId: req.user.id });
   }
 
   /** Development-only sign-in by email (for local testing before Google OAuth is configured). */

@@ -13,7 +13,7 @@ const KINDS = ["ATTACHMENT", "INVOICE", "PAYMENT_PROOF", "PROPOSAL", "DOCUMENT",
 const readableSize = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
 /**
- * Files for one record. Bytes live in the organization's Google Drive; TEAM OS
+ * Files for one record. Bytes live in TEAM OS storage (Supabase or the database); TEAM OS
  * serves them back through its own permission checks, so nothing is public.
  */
 export function FileAttachments({
@@ -80,7 +80,7 @@ export function FileAttachments({
         <Spinner label="Loading files" />
       ) : !files.data?.length ? (
         <p className="rounded-lg border border-dashed border-line-strong px-4 py-3 text-[13px] text-ink-faint">
-          No files yet. Uploads go to the organization&apos;s Google Drive.
+          No files yet.
         </p>
       ) : (
         <ul className="divide-y divide-line rounded-lg border border-line">

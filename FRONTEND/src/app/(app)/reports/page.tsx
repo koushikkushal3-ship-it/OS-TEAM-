@@ -16,7 +16,7 @@ import {
 } from "@/features/reports/api";
 import { eventStatusTone, formatDate, formatDateRange, formatMoney, titleCase } from "@/lib/format";
 import { useCan } from "@/lib/permissions/can";
-import { SheetExportButton } from "@/components/platform/sheet-export";
+import { ReportDownloadButton, SavedReports } from "@/components/platform/report-downloads";
 
 type Tab = "organization" | "teams" | "people" | "event";
 
@@ -139,7 +139,7 @@ export default function ReportsPage() {
             <Button variant="secondary" onClick={() => window.print()}>
               <Printer className="size-4" /> Print
             </Button>
-            {canExport && <SheetExportButton />}
+            {canExport && <ReportDownloadButton />}
             {canExport && tab !== "organization" && (
               <Button variant="secondary" onClick={exportCurrent}>
                 <Download className="size-4" /> Export CSV
@@ -399,6 +399,7 @@ export default function ReportsPage() {
           )}
         </>
       )}
+      <SavedReports />
     </>
   );
 }

@@ -149,6 +149,24 @@ Everything else is `PLANNED` and its permissions are denied by the engine until 
     steps are in `DEPLOY.md`. Keep migrations additive so a Render/Vercel rollback is always safe. Production refuses
     to start without a 32+ char `MFA_ENCRYPTION_KEY` — it must equal the local one.
 
+19. **No Google dependency (owner's decision, 2026-09-17).** The owner's Google account `work.on.off.ox@gmail.com`
+    was disabled by Google, so:
+    - **Sign-in is email + password**, managed by Master Admin only (Master → People → **Add person** / **Password** /
+      **Invite many** with a password column; blanks are generated and shown once). argon2 hashes; `/auth/login`
+      pauses after 5 wrong tries per email (20 per IP) in 15 min; unknown emails cost the same time as wrong passwords.
+      `mustChangePassword` forces `PasswordChangeScreen` and the guard returns 403 `PASSWORD_CHANGE_REQUIRED` for
+      everything except `/auth/me|password|logout` and the Master plane. Changing/resetting a password revokes the
+      person's other sessions. Google sign-in only shows when `AUTH_GOOGLE_ENABLED=true`.
+    - **Files and backups** go through `platform/file-storage.service.ts`: Supabase Storage when `SUPABASE_URL` +
+      `SUPABASE_SERVICE_ROLE_KEY` are set, otherwise Postgres (`file_blobs`, 10 MB per file). Old Drive-backed files
+      (`storage_provider = google_drive`) cannot be opened.
+    - **Reports** download as Excel (`exceljs`, `automation/spreadsheet.ts`) or CSV from `/reports/export`; the weekly
+      automation saves a `report_snapshots` row instead of a Google Sheet. Backups keep the 10 newest files.
+    - **Owner email/password** is set from a terminal with `npm run owner-login` (password typed hidden, never seen by
+      Claude). Drive/Calendar integration code still exists but is optional.
+    - **Moving databases**: `npm run copy-database` (dry run) / `-- --apply` copies every table from `DIRECT_URL` to an
+      already-migrated `NEW_DIRECT_URL`, parents before children, and checks row counts.
+
 ## Platform features (Phase 7)
 
 | Portal | Features | Where |
@@ -176,11 +194,11 @@ countdown banner). Feature hooks in `src/features/*`, UI atoms in `src/component
 ## Testing
 
 ```bash
-cd BACKEND && npm test        # 69 unit tests (permission engine 18, attendance 10, performance 7, custom field schema 12, automation rules 8, ics 4, alerts 4, csv 3, google event 3)
+cd BACKEND && npm test        # 74 unit tests (+ password 3, spreadsheet 2)
 cd FRONTEND && npm run build  # type-check + build
 ```
 
-End-to-end (39 tests across `test/app`, `test/tasks`, `test/meetings`, `test/platform`) needs a **disposable** database — never the live one:
+End-to-end (47 tests across `test/app`, `test/tasks`, `test/meetings`, `test/platform`, `test/login`) needs a **disposable** database — never the live one:
 
 ```bash
 cd BACKEND

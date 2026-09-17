@@ -25,6 +25,12 @@ const schema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().default(168),
   MFA_ENCRYPTION_KEY: z.string().default(''),
   AUTH_DEV_LOGIN: bool,
+  /** Google sign-in is off unless explicitly switched on; email + password is the main way in. */
+  AUTH_GOOGLE_ENABLED: bool,
+  /** Supabase Storage for uploaded files and backups. Without these, files are kept in the database. */
+  SUPABASE_URL: z.string().default(''),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().default(''),
+  SUPABASE_STORAGE_BUCKET: z.string().default('teamos-files'),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -47,4 +53,5 @@ export const env = load();
 export const isProduction = env.NODE_ENV === 'production';
 /** Dev email login is never available in production, whatever the flag says. */
 export const devLoginEnabled = env.AUTH_DEV_LOGIN && !isProduction;
+export const googleLoginEnabled = () => env.AUTH_GOOGLE_ENABLED && googleConfigured();
 export const googleConfigured = () => Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);

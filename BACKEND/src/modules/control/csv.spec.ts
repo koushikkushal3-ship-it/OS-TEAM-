@@ -10,7 +10,8 @@ describe('bulk invite parsing', () => {
   it('skips the header and blank lines, lowercases emails', () => {
     const { rows, errors } = parseInvites('email,name,department,role\n\nSAI@Mail.com,Sai,Creative,Content Team Member\n');
     expect(errors).toEqual([]);
-    expect(rows).toEqual([{ line: 3, email: 'sai@mail.com', name: 'Sai', department: 'Creative', role: 'Content Team Member' }]);
+    expect(rows).toEqual([{ line: 3, email: 'sai@mail.com', name: 'Sai', department: 'Creative', role: 'Content Team Member', password: null }]);
+    expect(parseInvites('a@b.in,Abc,,,Secret123').rows[0].password).toBe('Secret123');
   });
 
   it('reports bad rows by line without dropping the good ones', () => {

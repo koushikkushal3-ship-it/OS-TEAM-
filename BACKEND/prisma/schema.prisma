@@ -90,17 +90,21 @@ enum UserStatus {
 }
 
 model User {
-  id             String     @id @default(uuid()) @db.Uuid
-  organizationId String     @map("organization_id") @db.Uuid
-  departmentId   String?    @map("department_id") @db.Uuid
-  email          String     @unique
-  name           String
-  avatarUrl      String?    @map("avatar_url")
-  googleSubject  String?    @unique @map("google_subject")
-  status         UserStatus @default(INVITED)
-  lastLoginAt    DateTime?  @map("last_login_at")
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
+  id                 String     @id @default(uuid()) @db.Uuid
+  organizationId     String     @map("organization_id") @db.Uuid
+  departmentId       String?    @map("department_id") @db.Uuid
+  email              String     @unique
+  name               String
+  avatarUrl          String?    @map("avatar_url")
+  googleSubject      String?    @unique @map("google_subject")
+  /// argon2 hash. Set by Master Admin; the person can change it after signing in.
+  passwordHash       String?    @map("password_hash")
+  passwordChangedAt  DateTime?  @map("password_changed_at")
+  mustChangePassword Boolean    @default(false) @map("must_change_password")
+  status             UserStatus @default(INVITED)
+  lastLoginAt        DateTime?  @map("last_login_at")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
 
   organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   department           Department?           @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -723,19 +727,22 @@ model MeetingActionItem {
 /// A file stored in the organization's Google Drive, linked to any record.
 /// TEAM OS keeps the metadata; Drive keeps the bytes (arch doc §32).
 model FileRecord {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
   /// "expense", "idea", "ticket", "opportunity", "meeting", "task"…
-  entityType     String   @map("entity_type")
-  entityId       String   @map("entity_id") @db.Uuid
-  driveFileId    String   @map("drive_file_id")
-  name           String
-  mimeType       String   @map("mime_type")
-  size           Int
+  entityType      String   @map("entity_type")
+  entityId        String   @map("entity_id") @db.Uuid
+  driveFileId     String?  @map("drive_file_id")
+  /// "database" or "supabase" for new uploads; "google_drive" for files uploaded before Google was removed.
+  storageProvider String   @default("google_drive") @map("storage_provider")
+  storageKey      String?  @map("storage_key")
+  name            String
+  mimeType        String   @map("mime_type")
+  size            Int
   /// Kind of document: INVOICE, PAYMENT_PROOF, PROPOSAL, ATTACHMENT…
-  kind           String   @default("ATTACHMENT")
-  uploadedById   String?  @map("uploaded_by_id") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at")
+  kind            String   @default("ATTACHMENT")
+  uploadedById    String?  @map("uploaded_by_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   uploadedBy   User?        @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
@@ -1297,4 +1304,30 @@ model ScheduleEntry {
 
   @@index([organizationId, startsAt])
   @@map("schedule_entries")
+}
+
+/// File bytes kept in Postgres when Supabase Storage is not configured.
+model FileBlob {
+  key       String   @id
+  data      Bytes
+  size      Int
+  mimeType  String   @map("mime_type")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("file_blobs")
+}
+
+/// A saved report (e.g. the weekly report) that people download as Excel or CSV from the portal.
+model ReportSnapshot {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  kind           String
+  title          String
+  /// Header row first; every cell is a string or number.
+  rows           Json
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@map("report_snapshots")
 }

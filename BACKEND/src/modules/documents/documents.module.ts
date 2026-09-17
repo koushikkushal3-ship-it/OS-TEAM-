@@ -24,8 +24,7 @@ import { ZodPipe } from '../../common/pipes/zod.pipe.js';
 import { type AuditActor, type AuthenticatedRequest, actorFrom } from '../../common/types.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
-import { GoogleDriveService } from '../integrations/google-drive.service.js';
-import { IntegrationsModule } from '../integrations/integrations.module.js';
+import { FileStorageService, type StorageProvider } from '../platform/file-storage.service.js';
 import type { AuthContext } from '../permissions/permission-engine.js';
 import { PermissionService } from '../permissions/permission.service.js';
 import { recycle } from '../platform/records.js';
@@ -61,7 +60,7 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionService,
-    private readonly drive: GoogleDriveService,
+    private readonly storage: FileStorageService,
     private readonly audit: AuditService,
   ) {}
 
@@ -113,16 +112,17 @@ export class DocumentsService {
     await this.assertEntity(auth, input.entityType, input.entityId);
     if (file.size > MAX_BYTES) throw new BadRequestException('Files must be 25 MB or smaller');
 
-    const uploaded = await this.drive.upload(file, ENTITIES[input.entityType]);
+    const stored = await this.storage.put(this.storage.keyFor(`files/${ENTITIES[input.entityType]}`, auth.organizationId, file.originalname), file.buffer, file.mimetype);
     const record = await this.prisma.fileRecord.create({
       data: {
         organizationId: auth.organizationId,
         entityType: input.entityType,
         entityId: input.entityId,
-        driveFileId: uploaded.id,
-        name: uploaded.name,
-        mimeType: uploaded.mimeType || file.mimetype,
-        size: uploaded.size || file.size,
+        storageProvider: stored.provider,
+        storageKey: stored.key,
+        name: file.originalname,
+        mimeType: file.mimetype || 'application/octet-stream',
+        size: file.size,
         kind: input.kind,
         uploadedById: auth.userId,
       },
@@ -144,7 +144,7 @@ export class DocumentsService {
       where: { id, organizationId: auth.organizationId },
     });
     await this.assertEntity(auth, record.entityType as EntityType, record.entityId);
-    return { record, buffer: await this.drive.download(record.driveFileId) };
+    return { record, buffer: await this.storage.get(record.storageProvider as StorageProvider, record.storageKey ?? '') };
   }
 
   async remove(auth: AuthContext, actor: AuditActor, id: string) {
@@ -156,7 +156,7 @@ export class DocumentsService {
       throw new ForbiddenException('You cannot delete this file');
     }
 
-    // The Drive copy is kept until Master Admin deletes it permanently or the bin purges it.
+    // The stored bytes are kept until Master Admin deletes it permanently or the bin purges it.
     await recycle(this.prisma, { organizationId: auth.organizationId, entityType: 'file', row: record, label: record.name, deletedById: auth.userId });
     await this.prisma.fileRecord.delete({ where: { id } });
     await this.audit.record(actor, {
@@ -210,7 +210,6 @@ export class DocumentsController {
 }
 
 @Module({
-  imports: [IntegrationsModule],
   controllers: [DocumentsController],
   providers: [DocumentsService],
   exports: [DocumentsService],

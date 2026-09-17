@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, UserPlus } from "lucide-react";
+import { Search } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Avatar, Badge, Button, Card, EmptyState, ErrorNote, Input, Select, Spinner } from "@/components/ui/primitives";
 import { usePeople, useSetPersonEnabled } from "@/features/people/api";
@@ -8,14 +8,12 @@ import { errorMessage } from "@/lib/api/client";
 import type { Person, UserStatus } from "@/lib/api/types";
 import { formatDate, memberRoleLabel, titleCase, userStatusTone } from "@/lib/format";
 import { useCan } from "@/lib/permissions/can";
-import { InviteDialog } from "./invite-dialog";
 
 /** Shared people directory — used in the workspace and (with extra actions) in the Master console. */
-export function PeopleTable({ renderActions, showMasterRoles = false }: { renderActions?: (p: Person) => ReactNode; showMasterRoles?: boolean }) {
+export function PeopleTable({ renderActions, showMasterRoles = false, headerAction }: { renderActions?: (p: Person) => ReactNode; showMasterRoles?: boolean; headerAction?: ReactNode }) {
   const can = useCan();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<UserStatus | "">("");
-  const [inviting, setInviting] = useState(false);
   const { data: people, isLoading } = usePeople({ search, status });
   const setEnabled = useSetPersonEnabled();
 
@@ -32,11 +30,7 @@ export function PeopleTable({ renderActions, showMasterRoles = false }: { render
           <option value="INVITED">Invited</option>
           <option value="DISABLED">Disabled</option>
         </Select>
-        {can("user.create") && (
-          <Button onClick={() => setInviting(true)}>
-            <UserPlus className="size-4" /> Invite
-          </Button>
-        )}
+        {headerAction}
       </div>
 
       {setEnabled.error && (
@@ -117,7 +111,6 @@ export function PeopleTable({ renderActions, showMasterRoles = false }: { render
         )}
       </Card>
 
-      <InviteDialog open={inviting} onClose={() => setInviting(false)} />
     </>
   );
 }

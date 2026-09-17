@@ -321,6 +321,7 @@ export interface SystemHealth {
   database: { bytes: number; limitBytes: number; tables: { name: string; rows: number; bytes: number }[] };
   people: { active: number; invited: number; disabled: number; googleTestUserCap: number; signInCapable: number };
   drive: { connected: boolean; email: string | null; usageBytes: number | null; limitBytes: number | null };
+  storage: { provider: "database" | "supabase"; fileLimitMb: number | null };
   backups: { enabled: boolean; everyDays: number; lastAt: string | null; lastError: string | null };
   automation: { rules: number; enabled: number; lastRunAt: string | null };
   pendingApprovals: number;
@@ -334,7 +335,7 @@ export interface BackupSettings {
   everyDays: number;
   lastAt: string | null;
   lastError: string | null;
-  history: { at: string; name: string; url: string | null; tables: number; rows: number; bytes: number; by: string | null }[];
+  history: { at: string; name: string; url: string | null; key?: string; provider?: string; tables: number; rows: number; bytes: number; by: string | null }[];
 }
 export const useBackups = () => useQuery({ queryKey: ["control", "backups"], queryFn: () => api<BackupSettings>(`${M}/backups`) });
 
@@ -399,7 +400,7 @@ export function useControl() {
   return {
     signOut: useM((id: string) => api<{ sessions: number }>(`${M}/people/${id}/sign-out`, { method: "POST" })),
     offboard: useM(({ id, reassignToId }: { id: string; reassignToId: string | null }) => api<Record<string, number>>(`${M}/people/${id}/offboard`, { method: "POST", body: { reassignToId } })),
-    bulkInvite: useM((body: { csv: string; dryRun: boolean }) => api<{ dryRun: boolean; ready?: number; created?: number; problems: { line: number; message: string }[] }>(`${M}/people/bulk-invite`, { method: "POST", body })),
+    bulkInvite: useM((body: { csv: string; dryRun: boolean }) => api<{ dryRun: boolean; ready?: number; created?: number; problems: { line: number; message: string }[]; credentials?: { name: string; email: string; password: string }[] }>(`${M}/people/bulk-invite`, { method: "POST", body })),
     maintenance: useMutation({
       mutationFn: (body: { enabled: boolean; message: string }) => api(`${M}/maintenance`, { method: "PUT", body }),
       onSuccess: () => {
@@ -415,6 +416,10 @@ export function useControl() {
       },
     }),
     restore: useM((id: string) => api(`${M}/bin/${id}/restore`, { method: "POST" })),
+    addPerson: useM((body: { name: string; email: string; password: string; departmentId: string | null; roleId: string | null; mustChangePassword: boolean }) =>
+      api<{ id: string; email: string; name: string }>(`${M}/people`, { method: "POST", body }),
+    ),
+    setPassword: useM(({ id, ...body }: { id: string; password: string; mustChangePassword: boolean }) => api(`${M}/people/${id}/password`, { method: "POST", body })),
     ignore: useM((id: string) => api(`${M}/bin/${id}/ignore`, { method: "POST" })),
     purge: useM((id: string) => api(`${M}/bin/${id}`, { method: "DELETE" })),
     addMaintenancePerson: useM((body: { userId: string; message: string }) => api(`${M}/maintenance/people`, { method: "POST", body })),

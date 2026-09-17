@@ -20,6 +20,8 @@ export interface Me {
     avatarUrl: string | null;
     organization: Ref;
     department: Ref | null;
+    mustChangePassword: boolean;
+    hasPassword: boolean;
   };
   roles: { id: string; key: string; name: string; scopeType: RoleScope; scopeId: string | null }[];
   teams: (Ref & { memberRole: TeamMemberRole })[];

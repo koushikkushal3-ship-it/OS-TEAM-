@@ -1,4 +1,4 @@
-/** Parses the bulk-invite sheet: email, name, department, role (header row optional). */
+/** Parses the bulk-invite sheet: email, name, department, role, password (header row optional). */
 
 export interface InviteRow {
   line: number;
@@ -6,6 +6,8 @@ export interface InviteRow {
   name: string;
   department: string | null;
   role: string | null;
+  /** Empty means TEAM OS generates one. */
+  password: string | null;
 }
 
 export interface ParsedInvites {
@@ -47,7 +49,7 @@ export function parseInvites(text: string, maxRows = 500): ParsedInvites {
   text.split(/\r?\n/).forEach((raw, index) => {
     const line = index + 1;
     if (!raw.trim()) return;
-    const [emailRaw = '', nameRaw = '', dept = '', role = ''] = splitLine(raw);
+    const [emailRaw = '', nameRaw = '', dept = '', role = '', password = ''] = splitLine(raw);
     const email = emailRaw.toLowerCase();
     if (index === 0 && email === 'email') return; // header row
 
@@ -57,7 +59,7 @@ export function parseInvites(text: string, maxRows = 500): ParsedInvites {
     if (rows.length >= maxRows) return void errors.push({ line, message: `Only ${maxRows} people per import` });
 
     seen.add(email);
-    rows.push({ line, email, name: nameRaw, department: dept || null, role: role || null });
+    rows.push({ line, email, name: nameRaw, department: dept || null, role: role || null, password: password || null });
   });
 
   return { rows, errors };

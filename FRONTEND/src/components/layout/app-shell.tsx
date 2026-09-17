@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { Blocks, LogOut, Menu, X } from "lucide-react";
+import { Blocks, KeyRound, LogOut, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -14,6 +14,7 @@ import { NAV } from "./nav-config";
 import { MaintenanceScreen } from "../platform/maintenance-screen";
 import { BrandColor, GlobalSearch, NotificationBell, PlatformBanners } from "./platform-bar";
 import { InstallApp } from "../platform/install-app";
+import { ChangePasswordDialog, PasswordChangeScreen } from "../platform/password";
 
 export function Logo({ dark = true }: { dark?: boolean }) {
   return (
@@ -113,6 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     if (error instanceof ApiError && error.status === 401) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
@@ -124,6 +126,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Only a Master Admin in a privileged session keeps working while the portal is closed.
   if (me.maintenance && !me.master?.privileged) return <MaintenanceScreen me={me} />;
+  if (me.user.mustChangePassword && !me.viewAs) return <PasswordChangeScreen me={me} />;
 
   const rail = (
     <>
@@ -141,6 +144,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="truncate text-[13px] font-medium text-white">{me.user.name}</div>
             <div className="truncate text-[11px] text-rail-text">{me.roles[0]?.name ?? me.user.email}</div>
           </div>
+          <button
+            onClick={() => setChangingPassword(true)}
+            className="rounded-md p-1.5 text-rail-text hover:bg-rail-soft hover:text-white"
+            aria-label="Change password"
+            title="Change password"
+          >
+            <KeyRound className="size-4" />
+          </button>
           <button
             onClick={() => logout.mutate()}
             className="rounded-md p-1.5 text-rail-text hover:bg-rail-soft hover:text-white"
@@ -178,6 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       <PlatformBanners me={me} />
       <BrandColor />
+      {changingPassword && <ChangePasswordDialog me={me} onClose={() => setChangingPassword(false)} />}
       <InstallApp />
 
       <main className="mx-auto max-w-7xl px-4 py-6 lg:px-8 lg:py-8">{children}</main>

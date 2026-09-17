@@ -58,6 +58,7 @@ export class SessionService {
             status: true,
             organizationId: true,
             departmentId: true,
+            mustChangePassword: true,
           },
         },
       },
@@ -87,6 +88,10 @@ export class SessionService {
       },
     });
     return token;
+  }
+
+  async revokeOthers(userId: string, keepSessionId: string) {
+    await this.prisma.session.updateMany({ where: { userId, revokedAt: null, id: { not: keepSessionId } }, data: { revokedAt: new Date() } });
   }
 
   async revokeByToken(token: string) {

@@ -92,7 +92,7 @@ export default function IntegrationsPage() {
       <PageHeader
         eyebrow="Master Control"
         title="Integrations"
-        description="External services TEAM OS uses. The portal stays the workspace; these sit behind it."
+        description="Optional Google services. TEAM OS no longer needs any of them: sign-in uses email and password, files are stored in TEAM OS, and the Schedule works inside the portal."
       />
       <Suspense fallback={<Spinner />}>
         <DriveCard />

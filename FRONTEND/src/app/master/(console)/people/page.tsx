@@ -22,6 +22,7 @@ import type { Person, RoleScope } from "@/lib/api/types";
 import { formatDateTime, titleCase } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { AddPersonDialog, CredentialsList, KeyRound, SetPasswordDialog, UserPlus } from "@/components/platform/people-passwords";
 
 function RolesDialog({ personId, onClose }: { personId: string; onClose: () => void }) {
   const people = usePeople();
@@ -260,7 +261,7 @@ function OffboardDialog({ person, onClose }: { person: Person; onClose: () => vo
 
 function BulkInviteDialog({ onClose }: { onClose: () => void }) {
   const { bulkInvite } = useControl();
-  const [csv, setCsv] = useState("email,name,department,role\n");
+  const [csv, setCsv] = useState("email,name,department,role,password\n");
   const result = bulkInvite.data;
   const checked = result?.dryRun;
   const finished = result && !checked;
@@ -270,7 +271,7 @@ function BulkInviteDialog({ onClose }: { onClose: () => void }) {
       wide
       onClose={onClose}
       title="Invite many people"
-      description="Paste rows from Google Sheets or a CSV: email, name, department, role. Department and role must match names in TEAM OS; Master Admin cannot be given this way. While Google sign-in is in Testing, each person must also be added as a Google test user."
+      description="Paste rows from a spreadsheet or CSV: email, name, department, role, password. Department and role must match names in TEAM OS; Master Admin cannot be given this way. Leave password empty and TEAM OS makes one — you get every password to hand out after adding."
       submitLabel={finished ? undefined : checked ? `Invite ${result?.ready ?? 0} people` : "Check the list"}
       submitting={bulkInvite.isPending}
       error={bulkInvite.error ? errorMessage(bulkInvite.error) : null}
@@ -287,7 +288,8 @@ function BulkInviteDialog({ onClose }: { onClose: () => void }) {
       />
       {result && (
         <div className="space-y-2 text-sm">
-          {checked ? <p>{result.ready} ready to invite.</p> : <p className="font-medium text-ok">Invited {result.created} people.</p>}
+          {checked ? <p>{result.ready} ready to invite.</p> : <p className="font-medium text-ok">Added {result.created} people.</p>}
+          {!checked && result.credentials && <CredentialsList credentials={result.credentials} />}
           {result.problems.length > 0 && (
             <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-line p-2 text-xs">
               {result.problems.map((p, i) => (
@@ -308,6 +310,8 @@ export default function MasterPeoplePage() {
   const [accessFor, setAccessFor] = useState<Person | null>(null);
   const [offboarding, setOffboarding] = useState<Person | null>(null);
   const [bulk, setBulk] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [passwordFor, setPasswordFor] = useState<Person | null>(null);
   const viewAs = useViewAs();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -333,6 +337,11 @@ export default function MasterPeoplePage() {
       {signOut.data && <p className="mb-4 rounded-lg bg-ok-soft px-3 py-2 text-[13px] text-ok">Signed out of {signOut.data.sessions} session(s).</p>}
       <PeopleTable
         showMasterRoles
+        headerAction={
+          <Button onClick={() => setAdding(true)}>
+            <UserPlus className="size-4" /> Add person
+          </Button>
+        }
         renderActions={(p) => (
           <>
             <Button size="sm" variant="secondary" onClick={() => setSelected(p)}>
@@ -341,6 +350,11 @@ export default function MasterPeoplePage() {
             <Button size="sm" variant="secondary" onClick={() => setAccessFor(p)}>
               <EyeOff className="size-3.5" /> Access
             </Button>
+            {p.status !== "DISABLED" && (
+              <Button size="sm" variant="secondary" onClick={() => setPasswordFor(p)}>
+                <KeyRound className="size-3.5" /> Password
+              </Button>
+            )}
             {p.status !== "DISABLED" && (
               <>
                 <Button
@@ -367,6 +381,8 @@ export default function MasterPeoplePage() {
       {accessFor && <AccessDialog key={accessFor.id} person={accessFor} onClose={() => setAccessFor(null)} />}
       {offboarding && <OffboardDialog key={offboarding.id} person={offboarding} onClose={() => setOffboarding(null)} />}
       {bulk && <BulkInviteDialog onClose={() => setBulk(false)} />}
+      {adding && <AddPersonDialog onClose={() => setAdding(false)} />}
+      {passwordFor && <SetPasswordDialog key={passwordFor.id} person={passwordFor} onClose={() => setPasswordFor(null)} />}
     </>
   );
 }

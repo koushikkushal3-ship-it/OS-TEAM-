@@ -108,7 +108,7 @@ export default function RecycleBinPage() {
                   size="sm"
                   variant="danger"
                   loading={busy(purge, item.id)}
-                  onClick={() => confirm(`Delete "${item.label}" permanently? This cannot be undone${item.entityType === "file" ? ", and the file is removed from Google Drive too" : ""}.`) && purge.mutate(item.id)}
+                  onClick={() => confirm(`Delete "${item.label}" permanently? This cannot be undone${item.entityType === "file" ? ", and the file itself is removed from storage too" : ""}.`) && purge.mutate(item.id)}
                 >
                   <Trash2 className="size-3.5" /> Delete permanently
                 </Button>

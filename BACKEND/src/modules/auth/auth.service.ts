@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import argon2 from 'argon2';
 import { env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -6,6 +7,10 @@ import type { AuthContext } from '../permissions/permission-engine.js';
 import { PermissionService } from '../permissions/permission.service.js';
 import { PlatformSettingsService, maintenanceFor } from '../platform/platform-settings.service.js';
 import { SessionService } from './session.service.js';
+import { passwordProblem } from './password.js';
+
+// argon2 hash of a random throwaway value, verified when the email is unknown.
+const DUMMY_HASH = '$argon2id$v=19$m=65536,p=4,t=3$ZI5vuCzacOXQlgBbXjiMLQ$9Zsc7fEotFqCEKxxEv3Sf7rKQlU8bVBbu7jtYwW7R+o';
 
 export interface GoogleProfile {
   sub: string;
@@ -16,7 +21,7 @@ export interface GoogleProfile {
   hd?: string;
 }
 
-export type LoginFailure = 'not_invited' | 'disabled' | 'account_mismatch' | 'unverified_email' | 'wrong_domain';
+export type LoginFailure = 'not_invited' | 'disabled' | 'account_mismatch' | 'unverified_email' | 'wrong_domain' | 'wrong_password';
 
 export class LoginError extends Error {
   constructor(readonly reason: LoginFailure) {
@@ -90,6 +95,31 @@ export class AuthService {
     });
   }
 
+  /** Email + password set by Master Admin. The same answer for "no such person" and "wrong password". */
+  async loginWithPassword(email: string, password: string, meta: { ip?: string; userAgent?: string }) {
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    if (!user?.passwordHash) {
+      // Spend similar time so response speed does not reveal which emails exist.
+      await argon2.verify(DUMMY_HASH, password).catch(() => false);
+      throw new LoginError('wrong_password');
+    }
+    if (!(await argon2.verify(user.passwordHash, password))) throw new LoginError('wrong_password');
+    return this.completeLogin(user.id, meta, {});
+  }
+
+  async changePassword(userId: string, current: string, next: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.passwordHash || !(await argon2.verify(user.passwordHash, current))) throw new LoginError('wrong_password');
+    const problem = passwordProblem(next, user.email);
+    if (problem) throw new BadRequestException(problem);
+    if (await argon2.verify(user.passwordHash, next)) throw new BadRequestException('Choose a password different from the current one');
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await argon2.hash(next), passwordChangedAt: new Date(), mustChangePassword: false },
+    });
+    return user;
+  }
+
   async loginWithDevEmail(email: string, meta: { ip?: string; userAgent?: string }) {
     const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     if (!user) throw new LoginError('not_invited');
@@ -126,6 +156,8 @@ export class AuthService {
           name: true,
           avatarUrl: true,
           status: true,
+          mustChangePassword: true,
+          passwordHash: true,
           organization: { select: { id: true, name: true } },
           department: { select: { id: true, name: true } },
           teamMemberships: {
@@ -157,6 +189,8 @@ export class AuthService {
         avatarUrl: user.avatarUrl,
         organization: user.organization,
         department: user.department,
+        mustChangePassword: user.mustChangePassword,
+        hasPassword: !!user.passwordHash,
       },
       roles: auth.roles
         .filter((r) => !r.isMasterAdmin)

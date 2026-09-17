@@ -44,6 +44,9 @@ import {
 import { BIN_MODELS, BIN_RETENTION_DAYS, type BinEntity, masterAdmins, notify, unpackSnapshot } from '../platform/records.js';
 import { detectAlerts, deviceOf } from './alerts.js';
 import { parseInvites } from './csv.js';
+import { DATABASE_FILE_LIMIT, FileStorageService, type StorageProvider } from '../platform/file-storage.service.js';
+import argon2 from 'argon2';
+import { generatePassword, passwordProblem } from '../auth/password.js';
 
 const DAY = 86_400_000;
 const OPEN_TASKS = ['BACKLOG', 'ASSIGNED', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW'] as const;
@@ -69,6 +72,17 @@ const ruleBody = z.object({
   enabled: z.boolean().default(true),
 });
 
+const addPersonBody = z.object({
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(1).max(128),
+  departmentId: z.string().uuid().nullish(),
+  roleId: z.string().uuid().nullish(),
+  mustChangePassword: z.boolean().default(true),
+});
+
+const setPasswordBody = z.object({ password: z.string().min(1).max(128), mustChangePassword: z.boolean().default(true) });
+
 const brandingBody = z.object({
   logoUrl: z.string().trim().url().startsWith('https://').max(500).nullish(),
   brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullish(),
@@ -93,6 +107,7 @@ export class ControlController {
     private readonly backups: BackupService,
     private readonly automation: AutomationService,
     private readonly custom: CustomModulesService,
+    private readonly storage: FileStorageService,
   ) {}
 
   private person(req: AuthenticatedRequest, id: string) {
@@ -208,6 +223,7 @@ export class ControlController {
       drive: { connected: drive.connected, email: drive.connectedEmail, usageBytes: quota?.usage ?? null, limitBytes: quota?.limit ?? null },
       backups: { enabled: backups.enabled, everyDays: backups.everyDays, lastAt: backups.lastAt, lastError: backups.lastError },
       automation: { rules: rules.length, enabled: rules.filter((r) => r.enabled).length, lastRunAt: rules.map((r) => r.lastRunAt).filter(Boolean).sort().at(-1) ?? null },
+      storage: { provider: this.storage.provider, fileLimitMb: this.storage.provider === 'database' ? DATABASE_FILE_LIMIT / 1024 / 1024 : null },
       pendingApprovals,
       recycleBin: binItems,
       maintenance,
@@ -271,7 +287,7 @@ export class ControlController {
     const byName = <T extends { name: string }>(list: T[], name: string | null) => (name ? list.find((x) => x.name.toLowerCase() === name.toLowerCase()) : undefined);
     const taken = new Set(existing.map((e) => e.email));
 
-    const ready: { line: number; email: string; name: string; departmentId: string | null; roleId: string | null }[] = [];
+    const ready: { line: number; email: string; name: string; departmentId: string | null; roleId: string | null; password: string | null }[] = [];
     const problems = [...errors];
     for (const r of rows) {
       if (taken.has(r.email)) {
@@ -282,16 +298,72 @@ export class ControlController {
       const role = byName(roles, r.role);
       if (r.department && !dept) problems.push({ line: r.line, message: `Unknown department "${r.department}" — invited without one` });
       if (r.role && !role) problems.push({ line: r.line, message: `Unknown role "${r.role}" (Master Admin cannot be bulk-assigned) — invited without one` });
-      ready.push({ line: r.line, email: r.email, name: r.name, departmentId: dept?.id ?? null, roleId: role?.id ?? null });
+      const weak = r.password ? passwordProblem(r.password, r.email) : null;
+      if (weak) {
+        problems.push({ line: r.line, message: `Password for ${r.email}: ${weak}` });
+        continue;
+      }
+      ready.push({ line: r.line, email: r.email, name: r.name, departmentId: dept?.id ?? null, roleId: role?.id ?? null, password: r.password });
     }
     if (body.dryRun) return { dryRun: true, ready: ready.length, problems };
 
+    // Generated passwords are shown to the Master Admin once, here, so they can be handed out.
+    const credentials: { name: string; email: string; password: string }[] = [];
     for (const r of ready) {
-      const user = await this.prisma.user.create({ data: { organizationId: orgId, email: r.email, name: r.name, departmentId: r.departmentId, status: 'INVITED' } });
+      const password = r.password ?? generatePassword();
+      credentials.push({ name: r.name, email: r.email, password });
+      const user = await this.prisma.user.create({
+        data: { organizationId: orgId, email: r.email, name: r.name, departmentId: r.departmentId, status: 'INVITED', passwordHash: await argon2.hash(password), mustChangePassword: true },
+      });
       if (r.roleId) await this.prisma.userRole.create({ data: { userId: user.id, roleId: r.roleId, scopeType: 'ORGANIZATION', assignedById: req.user.id } });
       await this.audit.record(actorFrom(req), { action: 'user.invited', entityType: 'user', entityId: user.id, newValue: { email: r.email, name: r.name, source: 'bulk', roleId: r.roleId } });
     }
-    return { dryRun: false, created: ready.length, problems };
+    return { dryRun: false, created: ready.length, problems, credentials };
+  }
+
+  /** Creates a person with their sign-in password in one step. Only Master Admin can add people this way. */
+  @Post('people')
+  async addPerson(@Req() req: AuthenticatedRequest, @Body(new ZodPipe(addPersonBody)) body: z.infer<typeof addPersonBody>) {
+    const orgId = req.user.organizationId;
+    const problem = passwordProblem(body.password, body.email);
+    if (problem) throw new BadRequestException(problem);
+    if (await this.prisma.user.findUnique({ where: { email: body.email } })) throw new ConflictException('Someone with this email already exists');
+    if (body.departmentId) await this.prisma.department.findFirstOrThrow({ where: { id: body.departmentId, organizationId: orgId } });
+    const role = body.roleId ? await this.prisma.role.findFirstOrThrow({ where: { id: body.roleId, organizationId: orgId, isActive: true } }) : null;
+    if (role?.isMasterAdmin) throw new BadRequestException('Give Master Admin from the Roles button, where the two-person rule applies');
+
+    const user = await this.prisma.user.create({
+      data: {
+        organizationId: orgId,
+        email: body.email,
+        name: body.name,
+        departmentId: body.departmentId ?? null,
+        status: 'INVITED',
+        passwordHash: await argon2.hash(body.password),
+        mustChangePassword: body.mustChangePassword,
+      },
+    });
+    if (role) await this.prisma.userRole.create({ data: { userId: user.id, roleId: role.id, scopeType: 'ORGANIZATION', assignedById: req.user.id } });
+    await this.audit.record(actorFrom(req), { action: 'user.invited', entityType: 'user', entityId: user.id, newValue: { email: body.email, name: body.name, role: role?.name ?? null, source: 'master_with_password' } });
+    return { id: user.id, email: user.email, name: user.name };
+  }
+
+  /** Sets a new password for someone (forgotten password, first setup). Signs them out everywhere. */
+  @Post('people/:id/password')
+  async setPassword(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(setPasswordBody)) body: z.infer<typeof setPasswordBody>) {
+    const person = await this.person(req, id);
+    const problem = passwordProblem(body.password, person.email);
+    if (problem) throw new BadRequestException(problem);
+    await this.prisma.user.update({ where: { id }, data: { passwordHash: await argon2.hash(body.password), passwordChangedAt: new Date(), mustChangePassword: body.mustChangePassword } });
+    // Never cut off the Master Admin's own current session.
+    await this.prisma.session.updateMany({ where: { userId: id, revokedAt: null, id: { not: req.session.id } }, data: { revokedAt: new Date() } });
+    await this.audit.record(actorFrom(req), { action: 'user.password_set', entityType: 'user', entityId: id, newValue: { user: person.email, mustChangePassword: body.mustChangePassword } });
+    return { ok: true };
+  }
+
+  @Get('passwords/generate')
+  generate() {
+    return { password: generatePassword() };
   }
 
   // ── Maintenance & branding ─────────────────────────────────────
@@ -392,8 +464,8 @@ export class ControlController {
   async purge(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     const item = await this.prisma.deletedRecord.findFirstOrThrow({ where: { id, organizationId: req.user.organizationId, restoredAt: null } });
     if (item.entityType === 'file') {
-      const driveFileId = unpackSnapshot(item.snapshot).row.driveFileId;
-      if (typeof driveFileId === 'string') await this.drive.remove(driveFileId);
+      const row = unpackSnapshot(item.snapshot).row;
+      await this.storage.remove(row.storageProvider as StorageProvider, (row.storageKey as string | null) ?? null);
     }
     await this.prisma.deletedRecord.delete({ where: { id } });
     await this.audit.record(actorFrom(req), { action: 'recycle_bin.deleted_permanently', entityType: item.entityType, entityId: item.entityId, oldValue: { label: item.label, deletedAt: item.deletedAt } });
@@ -437,6 +509,15 @@ export class ControlController {
     const saved = await this.settings.set(BACKUPS_KEY, { ...current, ...body }, req.user.id);
     await this.audit.record(actorFrom(req), { action: 'platform.backups_changed', entityType: 'system_setting', entityId: BACKUPS_KEY, oldValue: { enabled: current.enabled, everyDays: current.everyDays }, newValue: body });
     return saved;
+  }
+
+  @Get('backups/download')
+  async downloadBackup(@Query(new ZodPipe(z.object({ key: z.string().min(1).max(300) }))) q: { key: string }, @Req() req: AuthenticatedRequest, @Res() res: Response) {
+    const { name, buffer } = await this.backups.download(q.key);
+    await this.audit.record(actorFrom(req), { action: 'platform.backup_downloaded', entityType: 'system_setting', entityId: BACKUPS_KEY, newValue: { name } });
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+    res.send(buffer);
   }
 
   @Post('backups/run')

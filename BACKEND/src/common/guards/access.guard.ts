@@ -70,10 +70,16 @@ export class AccessGuard implements CanActivate {
     };
     req.auth = await this.permissions.buildContext(user.id, sessionFields);
 
+    // A password set by Master Admin must be replaced before anything else is opened.
+    const passwordRoutes = ['/auth/me', '/auth/logout', '/auth/password'];
+    if (user.mustChangePassword && !session.impersonatorId && !masterRoute && !passwordRoutes.includes(req.path)) {
+      throw new ForbiddenException({ message: 'Choose a new password to continue', code: 'PASSWORD_CHANGE_REQUIRED' });
+    }
+
     // Maintenance mode closes the portal to everyone — reading included — except a Master Admin with a
     // privileged session. The Master console and its gateway stay reachable so they can switch it off,
     // and /auth/me + sign-out stay open so the lock screen can explain itself.
-    const openDuringMaintenance = masterRoute || req.path.startsWith('/master/') || req.path === '/auth/me' || req.path === '/auth/logout';
+    const openDuringMaintenance = masterRoute || req.path.startsWith('/master/') || req.path === '/auth/me' || req.path === '/auth/logout' || req.path === '/auth/password';
     if (!openDuringMaintenance && !req.auth.privileged) {
       const maintenance = maintenanceFor(await this.settings.maintenance(), req.user.id);
       if (maintenance) {
